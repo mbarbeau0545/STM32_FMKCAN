@@ -1,0 +1,255 @@
+Le bit rate nominal est calculé avec la formule :
+Bit Rate =
+Frequence d’entree / (NominalPrescaler ×(NominalTimeSeg1+NominalTimeSeg2+1))
+
+2. Principes de Synchronisation et Segmentation de Temps
+NominalTimeSeg1 et NominalTimeSeg2 : Ces valeurs définissent le nombre de quanta de temps dans chaque segment d'un bit CAN.
+NominalTimeSeg1 est généralement plus grand que NominalTimeSeg2 car il inclut le segment de propagation et de phase.
+Ces segments doivent respecter des proportions spécifiques pour que le contrôleur CAN puisse se synchroniser correctement avec les autres nœuds.
+NominalSyncJumpWidth : Cette valeur détermine combien de quanta le contrôleur peut ajouter ou retirer pour rester synchronisé avec le bus, surtout dans des environnements où il peut y avoir des variations d'horloge.
+La valeur recommandée pour NominalSyncJumpWidth est souvent autour de 10-15 % de la somme NominalTimeSeg1 + NominalTimeSeg2 + 1.
+3. Exemples Basés sur des Vrais Cas d’Utilisation
+Pour un bus CAN classique (CAN 2.0) avec un taux de transmission de 500 kbps et une fréquence d'oscillateur de 40 MHz :
+NominalPrescaler : 10 (fréquence effective de 4 MHz pour le FDCAN)
+NominalTimeSeg1 : 13
+NominalTimeSeg2 : 2
+NominalSyncJumpWidth : 1
+En CAN FD, ces valeurs varient selon le taux de bits souhaité pour les données (DataTimeSeg1, DataTimeSeg2, DataSyncJumpWidth, DataPrescaler), mais suivent les mêmes principes.
+4. Outils d’Aide pour le Calcul
+Des calculateurs en ligne et des tables de configuration pour les bus CAN sont souvent utilisés pour obtenir des combinaisons optimales. Certaines configurations de base peuvent aussi être trouvées dans la documentation des microcontrôleurs ou des contrôleurs CAN pour garantir une conformité aux spécifications standard.
+
+
+------------------- Init --------------------
+1. ClockDivider CONFIGURATION
+Description : Divise l'horloge de base du FDCAN (Fréquence d’oscillateur) pour obtenir l’horloge nominale de la transmission.
+Valeurs possibles : Peut être FDCAN_CLOCK_DIV1, FDCAN_CLOCK_DIV2, FDCAN_CLOCK_DIV3, jusqu'à FDCAN_CLOCK_DIV12.
+Exemple : hfdcan.Init.ClockDivider = FDCAN_CLOCK_DIV1; (pas de division d'horloge).
+2. FrameFormat ENUM 
+Description : Définit le format des trames FDCAN : standard/classique (CAN 2.0) ou Flexible Data-Rate (FD CAN).
+Valeurs possibles :
+FDCAN_FRAME_CLASSIC : Mode classique, compatible CAN 2.0A et CAN 2.0B.
+FDCAN_FRAME_FD_NO_BRS : CAN FD sans "Bit Rate Switching".
+FDCAN_FRAME_FD_BRS : CAN FD avec "Bit Rate Switching".
+Exemple : hfdcan.Init.FrameFormat = FDCAN_FRAME_CLASSIC; (CAN 2.0 classique).
+3. Mode CONFIGURATION
+Description : Définit le mode de fonctionnement du contrôleur CAN, notamment pour les tests en bouclage (loopback) et le mode restreint.
+Valeurs possibles :
+FDCAN_MODE_NORMAL : Mode normal pour communication.
+FDCAN_MODE_INTERNAL_LOOPBACK : Mode de test interne.
+FDCAN_MODE_EXTERNAL_LOOPBACK : Mode de test externe.
+FDCAN_MODE_RESTRICTED_OPERATION : Limite la communication à des ID spécifiques.
+Exemple : hfdcan.Init.Mode = FDCAN_MODE_NORMAL;
+4. AutoRetransmission CONFIGURATION
+Description : Active ou désactive la retransmission automatique en cas d’erreur de communication.
+Valeurs possibles : ENABLE ou DISABLE.
+Exemple : hfdcan.Init.AutoRetransmission = ENABLE;
+5. TransmitPause CONFIGURATION
+Description : Permet une pause entre les transmissions successives pour donner la priorité à d'autres messages.
+Valeurs possibles : ENABLE ou DISABLE.
+Exemple : hfdcan.Init.TransmitPause = DISABLE;
+6. ProtocolException CONFIGURATION
+Description : Active la gestion des exceptions de protocole CAN, pour détecter les violations de règles dans les communications.
+Valeurs possibles : ENABLE ou DISABLE.
+Exemple : hfdcan.Init.ProtocolException = ENABLE;
+7. NominalPrescaler BAUDRATE
+Description : Divise la fréquence d’oscillateur pour définir la vitesse nominale des bits (bitrate nominal) en mode CAN classique.
+Valeur possible : Entre 1 et 512.
+Exemple : hfdcan.Init.NominalPrescaler = 2;
+8. NominalSyncJumpWidth CONFIGURATION
+Description : Définit la largeur de saut de synchronisation nominale, indiquant le nombre maximum de quanta que le FDCAN peut allonger ou réduire pour se synchroniser.
+Valeur possible : Entre 1 et 128.
+Exemple : hfdcan.Init.NominalSyncJumpWidth = 1;
+9. NominalTimeSeg1 BAUDRATE
+Description : Détermine le nombre de quanta dans le segment de temps 1 pour le bit nominal.
+Valeur possible : Entre 2 et 256.
+Exemple : hfdcan.Init.NominalTimeSeg1 = 13;
+10. NominalTimeSeg2 BAUDRATE
+Description : Détermine le nombre de quanta dans le segment de temps 2 pour le bit nominal.
+Valeur possible : Entre 2 et 128.
+Exemple : hfdcan.Init.NominalTimeSeg2 = 2;
+11. DataPrescaler CONFIGURATION
+Description : Divise la fréquence d’oscillateur pour obtenir le taux de bits en mode CAN FD (data bit time).
+Valeur possible : Entre 1 et 32.
+Exemple : hfdcan.Init.DataPrescaler = 2;
+12. DataSyncJumpWidth CONFIGURATION
+Description : Largeur de saut de synchronisation maximale pour le bit de données en mode CAN FD.
+Valeur possible : Entre 1 et 16.
+Exemple : hfdcan.Init.DataSyncJumpWidth = 1;
+13. DataTimeSeg1 CONFIGURATION
+Description : Nombre de quanta dans le segment de temps 1 pour le bit de données en mode CAN FD.
+Valeur possible : Entre 1 et 32.
+Exemple : hfdcan.Init.DataTimeSeg1 = 10;
+14. DataTimeSeg2 CONFIGURATION
+Description : Nombre de quanta dans le segment de temps 2 pour le bit de données en mode CAN FD.
+Valeur possible : Entre 1 et 16.
+Exemple : hfdcan.Init.DataTimeSeg2 = 2;
+15. StdFiltersNbr CONFIGURATION
+Description : Nombre de filtres pour les ID standards (11 bits).
+Valeur possible : Entre 0 et 28.
+Exemple : hfdcan.Init.StdFiltersNbr = 10; (10 filtres pour les ID standards).
+16. ExtFiltersNbr CONFIGURATION
+Description : Nombre de filtres pour les ID étendus (29 bits).
+Valeur possible : Entre 0 et 8.
+Exemple : hfdcan.Init.ExtFiltersNbr = 2; (2 filtres pour les ID étendus).
+17. TxFifoQueueMode CONFIGURATION
+Description : Définit le mode d’utilisation du FIFO ou de la file d’attente (queue) pour la transmission.
+Valeurs possibles :
+FDCAN_TX_FIFO_OPERATION : Mode FIFO pour la transmission.
+FDCAN_TX_QUEUE_OPERATION : Mode file d’attente.
+Exemple : hfdcan.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+
+
+---------------------------- Baudrate--------------------------------------------------------
+Clock FDCAN : La fréquence d'entrée de l'horloge pour le FDCAN, configurée dans le système d'horloge (par exemple, 64 MHz).
+
+NominalPrescaler : Divise la fréquence d'entrée de l'horloge pour obtenir une base de temps adaptée aux spécifications du bus CAN.
+
+NominalSyncJumpWidth (SJW) :
+
+Définit la largeur de saut de synchronisation.
+C'est une période pendant laquelle le nœud peut ajuster son horloge pour rester synchronisé avec le bus (par exemple, en cas de jitter).
+NominalTimeSeg1 :
+
+Combine le segment de propagation et le segment de phase 1.
+Définit le temps avant l'échantillonnage du bit CAN.
+NominalTimeSeg2 :
+
+Correspond au segment de phase 2.
+Définit le temps après l'échantillonnage pour effectuer des ajustements de synchronisation si nécessaire.
+SyncSeg (Segment de synchronisation) :
+
+Ce segment est fixe et toujours égal à 1 TQ.
+
+
+-------------- FD_CAN-----------------------------
+#include "stm32g4xx_hal.h"
+
+// Structure de configuration pour le périphérique FDCAN
+FDCAN_HandleTypeDef hfdcan;
+
+void FDCAN_Init(void)
+{
+    // 1. Initialisation de la structure FDCAN
+    hfdcan.Instance = FDCAN1;  // Périphérique FDCAN1 (changez si vous utilisez FDCAN2)
+
+    hfdcan.Init.ClockDivider = FDCAN_CLOCK_DIV1;             // Diviseur d'horloge
+    hfdcan.Init.FrameFormat = FDCAN_FRAME_FD_BRS;            // Format de trame : CAN FD avec BRS (Bit Rate Switching)
+    hfdcan.Init.Mode = FDCAN_MODE_NORMAL;                    // Mode normal (non-boucle)
+    hfdcan.Init.AutoRetransmission = ENABLE;                 // Autorise les retransmissions automatiques
+    hfdcan.Init.TransmitPause = DISABLE;                     // Pas de pause entre les transmissions
+    hfdcan.Init.ProtocolException = ENABLE;                  // Active la gestion des exceptions
+    hfdcan.Init.NominalPrescaler = 1;                        // Prescaler nominal
+    hfdcan.Init.NominalSyncJumpWidth = 1;                    // Largeur de saut de synchronisation nominale
+    hfdcan.Init.NominalTimeSeg1 = 12;                        // Segment de temps nominal 1
+    hfdcan.Init.NominalTimeSeg2 = 4;                         // Segment de temps nominal 2
+    hfdcan.Init.DataPrescaler = 1;                           // Prescaler pour la phase data
+    hfdcan.Init.DataSyncJumpWidth = 1;                       // Largeur de saut de synchronisation pour la phase data
+    hfdcan.Init.DataTimeSeg1 = 5;                            // Segment de temps pour la phase data 1
+    hfdcan.Init.DataTimeSeg2 = 2;                            // Segment de temps pour la phase data 2
+    hfdcan.Init.StdFiltersNbr = 1;                           // Nombre de filtres standards
+    hfdcan.Init.ExtFiltersNbr = 0;                           // Nombre de filtres étendus
+    hfdcan.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;   // Mode FIFO pour la transmission
+
+    // 2. Appel de la fonction d'initialisation
+    if (HAL_FDCAN_Init(&hfdcan) != HAL_OK)
+    {
+        // Gestion d'erreur (par exemple, initialisation échouée)
+        Error_Handler();
+    }
+
+    // 3. Configurer un filtre si nécessaire (exemple de filtre standard sur l'ID 0x123)
+    FDCAN_FilterTypeDef sFilterConfig;
+    sFilterConfig.IdType = FDCAN_STANDARD_ID;
+    sFilterConfig.FilterIndex = 0;
+    sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+    sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+    sFilterConfig.FilterID1 = 0x123;
+    sFilterConfig.FilterID2 = 0x7FF; // Masque (accepte tous les bits de ID 0x123)
+
+    if (HAL_FDCAN_ConfigFilter(&hfdcan, &sFilterConfig) != HAL_OK)
+    {
+        // Gestion d'erreur
+        Error_Handler();
+    }
+
+    // 4. Activer le mode de réception d'interruptions
+    if (HAL_FDCAN_ActivateNotification(&hfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK)
+    {
+        // Gestion d'erreur
+        Error_Handler();
+    }
+
+    // 5. Démarrer le module FDCAN
+    if (HAL_FDCAN_Start(&hfdcan) != HAL_OK)
+    {
+        // Gestion d'erreur
+        Error_Handler();
+    }
+}
+
+-------------- CAN-----------------------------
+// Structure de configuration pour le périphérique FDCAN
+FDCAN_HandleTypeDef hfdcan;
+
+void FDCAN_Init_CAN2_0B(void)
+{
+    // 1. Initialisation de la structure FDCAN
+    hfdcan.Instance = FDCAN1;  // Utiliser FDCAN1 (ou ajuster selon le périphérique disponible)
+
+    hfdcan.Init.ClockDivider = FDCAN_CLOCK_DIV1;            // Diviseur d'horloge
+    hfdcan.Init.FrameFormat = FDCAN_FRAME_CLASSIC;          // Mode CAN classique (CAN 2.0)
+    hfdcan.Init.Mode = FDCAN_MODE_NORMAL;                   // Mode normal (pas de bouclage)
+    hfdcan.Init.AutoRetransmission = ENABLE;                // Autorise les retransmissions automatiques
+    hfdcan.Init.TransmitPause = DISABLE;                    // Pas de pause entre les transmissions
+    hfdcan.Init.ProtocolException = ENABLE;                 // Active la gestion des exceptions
+    hfdcan.Init.NominalPrescaler = 2;                       // Prescaler nominal
+    hfdcan.Init.NominalSyncJumpWidth = 1;                   // Largeur de saut de synchronisation nominale
+    hfdcan.Init.NominalTimeSeg1 = 13;                       // Segment de temps nominal 1
+    hfdcan.Init.NominalTimeSeg2 = 2;                        // Segment de temps nominal 2
+    hfdcan.Init.StdFiltersNbr = 1;                          // Nombre de filtres standards
+    hfdcan.Init.ExtFiltersNbr = 0;                          // Nombre de filtres étendus
+    hfdcan.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;  // Mode FIFO pour la transmission
+
+    // 2. Appel de la fonction d'initialisation
+    if (HAL_FDCAN_Init(&hfdcan) != HAL_OK)
+    {
+        // Gestion d'erreur (par exemple, initialisation échouée)
+        Error_Handler();
+    }
+
+    // 3. Configurer un filtre standard si nécessaire (exemple avec un ID de 0x123)
+    FDCAN_FilterTypeDef sFilterConfig;
+    sFilterConfig.IdType = FDCAN_STANDARD_ID;
+    sFilterConfig.FilterIndex = 0;
+    sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+    sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+    sFilterConfig.FilterID1 = 0x123;
+    sFilterConfig.FilterID2 = 0x7FF;  // Masque pour accepter tous les bits de l'ID 0x123
+
+    if (HAL_FDCAN_ConfigFilter(&hfdcan, &sFilterConfig) != HAL_OK)
+    {
+        // Gestion d'erreur
+        Error_Handler();
+    }
+
+    // 4. Activer le mode de réception d'interruptions
+    if (HAL_FDCAN_ActivateNotification(&hfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK)
+    {
+        // Gestion d'erreur
+        Error_Handler();
+    }
+
+    // 5. Démarrer le module FDCAN
+    if (HAL_FDCAN_Start(&hfdcan) != HAL_OK)
+    {
+        // Gestion d'erreur
+        Error_Handler();
+    }
+}
+
+// Fonction de gestion des erreurs
+void Error_Handler(void)
+{
+    // Placez ici le code pour gérer les erreurs
+    while (1);
+}

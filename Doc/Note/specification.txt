@@ -1,0 +1,36 @@
+- Recevoir et Envoyer des messages CAN via un bus CAN
+- revevoir un ensemble de message CAN en fonction d'un filtre
+
+
+# Lorsqu'on veut recevoir un message ou un ensemble de message il faut faire une demande ppour être appelé lorsqu'on recôit un msg de l'ID
+    pour ce faire, il faut renseigner un ID et un mask, combien on attend de byte, est-ce c'est un remote et data frame
+    si tout les champs match, le module vous appelle avec l'id, l'état du bus, le nombre de données reçu ,et les données 
+
+# lorsqu'on essaye d'envoyer un message CAN et qu'on le met dans la fifo et que la fifo est pleine, il faut mettre à jour un flag pour dire que 
+il y a un message dans la TxQueue, il faut activer les callbacks de transmission complete pour réenvoyer les messagfes depuis les callbacks
+Les Callback stockes les messages sous la strcuture du bsp, prêt à être envoyé par soucis de rapidité.\n
+
+
+
+
+- Gérer les mails box et Fifo -> por l'instant pas de filtre, tout est acceptée
+    - Gestion des filtres ID pour chaque fifo 
+    - alternées les fifo pour chaque config msg CAN -> configurer des filtres globals pour chaque fifo la moitié des ID, dans l'un l'autre moitié dans l'autre 
+    - Définir un nombre max de msg configurable par fifo ?
+
+- Gestion des mask et des id's
+    - On peut configurer jussqu'à 8 filtres distincts en mode extend et 28 en modes standards sur les deux fifos
+    - Chaque Config de filtre peut se faire de 4 sortes différents 
+        - range -> une plage d'ID pour id standar et étendu 
+        - dual -> deux id sont acceptée
+        - mask -> on configure un id et un mask pour chaque index
+        - range_esi comme range mais (pour étendu il compara donc seulement les 3 premiers hexa 0x330 par exemple)
+
+    - On peut se servir des config filter mode mask ou range pour consacré un range à une ou plusieurs informations regroupé sous un module
+        exemple tout ce qui concerne la les roues (encoder + vitesse) = un module, le diag = un module etc etc
+    - 
+
+---------- Cyclic ---------------
+Regarder si une transmissio de message à échouer car pplus de place dans les mailsBox, si le message est prio et a moins de
+8 bytes le mettre dans une file d'attentes, dans la cyclic et on essaye de réémettre toutes la queue pendant 20 ms, passé ce temps là on arrête et 
+on réesseyera plus tard, si la queue est vide, on reset le flag si ça n'as pas encore été fait dans l'interruption TxFifoEmpty

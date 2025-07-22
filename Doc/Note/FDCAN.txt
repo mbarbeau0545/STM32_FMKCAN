@@ -1,0 +1,75 @@
+After identifier, CAN 2.0 and CAN-FD have a different action:
+• CAN 2.0 sends an RTR bit to precise the type of frame: data frame (RTR is dominant) or remote frame
+(RTR is recessive).
+• CAN-FD sends always a dominant RRS (reserved) as it only supports data frames.
+
+The features of the FDCAN on STM32 devices are listed below:
+• Compliant with CAN protocol version 2.0 part A, B and ISO 11898-1: 2015, -4
+• Accessible 10-Kbyte RAM memory to allocate up to 2560 words
+• Improved acceptance filtering
+• Two configurable receive FIFOs
+• Up to 64 dedicated receive buffers
+• Separate signaling on reception of high priority messages
+• Up to 32 dedicated transmit buffers
+• Configurable transmit FIFO and transmit queue
+• Configurable transmit event FIFO
+• Clock calibration unit
+• Transceiver delay compensation
+
+------------------Rx CAN------------------
+Possède 2 Rx FIFO -> up to 64 Element each, their position in the RAM are automatically and dynamically managed overwrite possibles
+Rx buffer dedicate -> 64 buffer of one element, user choose the buffer index , option to overwrite or not, user choose the buffer index 
+
+------------------Tx CAN------------------
+Can provide information about a transmission of message CAN on the CAN bus, store ID and timestamp 
+can send msg can from 
+           - 32 element Tx buffer 
+    and/or - 1 Tx queue (First to send = High  Priority)
+    or     - 1 Tx FIFO (first in fisrst out with index) 
+
+
+1. Mécanismes de Transmission
+Le module FDCAN permet de transmettre des messages via trois mécanismes possibles :
+
+Dedicated Tx Buffer :
+Chaque buffer est dédié à un seul message.
+Les messages sont envoyés directement depuis ces buffers selon leur priorité.
+Tx FIFO (First In First Out) :
+Les messages sont envoyés dans l'ordre où ils sont insérés (FIFO).
+Tx Queue :
+Les messages sont également envoyés séquentiellement, mais selon leur priorité définie par l'identifiant du message CAN (plus bas = priorité élevée).
+Remarque : Vous pouvez utiliser Tx Queue ou Tx FIFO, mais pas les deux en même temps.
+
+2. Taille et Allocation de Mémoire
+Mémoire RAM dédiée : Le module FDCAN utilise une RAM spéciale pour stocker les messages CAN avant leur transmission.
+La RAM est divisée en sections, et l'allocation se fait de manière dynamique et successive :
+Les buffers Dedicated Tx Buffers sont alloués en premier.
+Ensuite, la Tx FIFO ou la Tx Queue est allouée.
+Chaque élément dans un buffer contient :
+
+Identifiant CAN (ID),
+DLC (Data Length Code) : Nombre d'octets de données dans le message,
+Bits de contrôle (ESI, XTD, RTR, BRS, FDF),
+Données (payload du message),
+Marqueur de message,
+Bit de contrôle d’événement FIFO.
+
+1. Fonctionnement de la FIFO/Queue
+La fonction HAL_FDCAN_AddMessageToTxFifoQ est utilisée pour ajouter un message dans la Tx FIFO ou la Tx Queue (selon la configuration). Cette fonction place le message dans une zone mémoire logicielle dédiée.
+
+Une fois le message ajouté, il attend d’être transmis.
+Le hardware du module FDCAN gère automatiquement le placement de ce message dans l’un des buffers physiques disponibles lorsqu’un buffer se libère (i.e., après la transmission d’un message précédent).
+2. Rôle du Hardware
+Le FDCAN hardware est responsable de :
+
+Surveiller les buffers physiques (Tx Buffers) pour détecter lorsqu’un buffer devient disponible.
+Récupérer les messages de la FIFO/Queue.
+Placer les messages dans les Tx Buffers physiques et lancer leur transmission.
+3. Priorisation dans la Queue
+Si vous utilisez une Tx Queue, les messages sont sélectionnés selon leur priorité CAN (en fonction de l’identifiant du message).
+
+Les messages ayant l’identifiant le plus bas (priorité la plus élevée) sont transmis en premier.
+Pour une Tx FIFO, les messages sont transmis dans l’ordre où ils ont été ajoutés.
+--------------------- CLOCK----------------------
+pour le FDCAN, il faut activer plus d'horlohe dans le system_clock_config
+Tout les can ont la même RCC clock 

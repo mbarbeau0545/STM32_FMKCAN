@@ -1,0 +1,7 @@
+- Dans s_FMKFDCAN_BspRxEventCb
+    - appler une fonction pour Appeler la callback user au lieu d'appler toutes les fonctions
+    Pour pouvoir l'utilisé également dans OPerational lorsque Flag RxQueuePending est levé
+
+- Dans InitDriver, 
+    Mettre dans la structure DriveNodeCfg les pins utiliser Rx et Tx et appelé nue fonction de FMKIO pour configurer les pins 
+    

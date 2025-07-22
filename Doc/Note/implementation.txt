@@ -1,0 +1,127 @@
+Pour gérer efficacement les fonctions de réception CAN et éviter les débordements, il est essentiel d’optimiser la lecture et le traitement des messages reçus. Voici quelques bonnes pratiques :
+
+1. Utiliser les Callbacks d'Interruption
+Configurez le CAN pour générer une interruption dès qu’un message arrive dans la FIFO (HAL_CAN_RxFifo0MsgPendingCallback et HAL_CAN_RxFifo1MsgPendingCallback). Cela permet de traiter les messages dès qu’ils arrivent.
+Dans chaque callback, lisez le message immédiatement pour libérer l’espace dans la FIFO, même si le traitement du message est différé.
+2. Lire les Messages en Bloc
+Lorsqu’une interruption indique qu’un message est dans la FIFO, vérifiez s’il y a d’autres messages en attente dans la FIFO avant de quitter la callback.
+Par exemple, lisez tous les messages dans un boucle jusqu'à ce que la FIFO soit vide. Cela permet de vider rapidement la FIFO et de réduire le risque d’overflow en cas d’arrivées rapides.
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+    while (HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0) > 0) {
+        CAN_RxHeaderTypeDef rxHeader;
+        uint8_t rxData[8];
+        HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rxHeader, rxData);
+        // Traiter les données ici ou les stocker pour un traitement ultérieur
+    }
+}
+
+
+ Fonctions liées au Ram Watchdog :
+
+HAL_FDCAN_ConfigRamWatchdog
+But : Configure le compteur du Ram Watchdog, qui surveille le bon fonctionnement de la RAM dédiée au FDCAN.
+Contexte : À utiliser lors de l'initialisation du FDCAN. Ce watchdog est principalement activé pour détecter une défaillance de la RAM interne du FDCAN. Une valeur initiale est fournie pour le compteur qui décrémente lors de l'opération.
+Paramètre : CounterStartValue est la valeur initiale du compteur.
+2. Fonctions de gestion du Timestamp Counter :
+
+HAL_FDCAN_ConfigTimestampCounter
+But : Configure le prescaler du compteur de timestamp pour ajuster sa résolution.
+Contexte : À appeler lors de l'initialisation pour régler la granularité des timestamps.
+Paramètre : TimestampPrescaler définit la fréquence du compteur de timestamp.
+
+HAL_FDCAN_EnableTimestampCounter
+But : Active le compteur de timestamp.
+Contexte : À appeler pendant l'initialisation pour commencer le suivi temporel des messages.
+
+HAL_FDCAN_DisableTimestampCounter
+But : Désactive le compteur de timestamp.
+Contexte : Utilisé lors d’une configuration temporaire où le timestamp n'est pas nécessaire.
+
+HAL_FDCAN_GetTimestampCounter
+But : Lit la valeur actuelle du compteur de timestamp.
+Contexte : Peut être appelé de façon cyclique pour obtenir la valeur courante et calculer le délai entre messages, utile dans des protocoles nécessitant des timestamps.
+
+HAL_FDCAN_ResetTimestampCounter
+But : Réinitialise le compteur de timestamp.
+Contexte : À utiliser lors de l'initialisation ou à des points spécifiques du programme pour remettre le compteur à zéro.
+3. Fonctions pour le Timeout Counter :
+
+HAL_FDCAN_ConfigTimeoutCounter
+But : Configure le compteur de timeout pour des actions spécifiques (e.g., surveillance des transmissions).
+Contexte : À utiliser lors de l'initialisation pour définir les opérations de timeout.
+Paramètres :
+TimeoutOperation : Définit l'opération spécifique (ex., monitoring de transmission).
+TimeoutPeriod : Durée avant le timeout.
+
+HAL_FDCAN_EnableTimeoutCounter
+But : Active le compteur de timeout.
+Contexte : Utilisé pendant l'initialisation pour activer la surveillance du timeout.
+
+HAL_FDCAN_DisableTimeoutCounter
+But : Désactive le compteur de timeout.
+Contexte : Pour désactiver temporairement la surveillance de timeout.
+
+HAL_FDCAN_GetTimeoutCounter
+But : Lit la valeur actuelle du compteur de timeout.
+Contexte : Peut être utilisé dans le code cyclique pour vérifier la durée d’attente d’un message ou d’une réponse.
+
+HAL_FDCAN_ResetTimeoutCounter
+But : Réinitialise le compteur de timeout.
+Contexte : Utilisé à l'initialisation ou pour recommencer une période de surveillance spécifique.
+
+4. Fonction pour la Transmission Delay Compensation :
+HAL_FDCAN_ConfigTxDelayCompensation
+But : Configure les paramètres de compensation de délai de transmission, une fonctionnalité importante pour les réseaux CAN FD, pour ajuster les délais dus aux câblages ou à d’autres effets.
+Contexte : À utiliser pendant l'initialisation, en particulier dans les configurations réseau CAN FD avec des débits élevés.
+Paramètres :
+TdcOffset : Décalage pour compenser le délai de transmission.
+TdcFilter : Valeur de filtre pour affiner la compensation.$
+
+
+Exemple de code qui permet de filtrer les addresses appartenant à 18FFFFxxFDCAN_FilterTypeDef sFilterConfig;
+sFilterConfig.IdType = FDCAN_EXTENDED_ID;           // Utilisation de l'ID étendu
+sFilterConfig.FilterIndex = 0;                      // Index du filtre
+sFilterConfig.FilterType = FDCAN_FILTER_MASK;       // Type de filtre : utilisation du masque
+sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0; // Rediriger vers RX FIFO 0
+sFilterConfig.FilterID1 = 0x18FFFF00;               // L'ID cible (16 premiers bits définis)
+sFilterConfig.FilterID2 = 0xFFFFFF00;                 // Masque pour ignorer les 8 derniers bits
+
+if (HAL_FDCAN_ConfigFilter(&hfdcan, &sFilterConfig) != HAL_OK)
+{
+    // Gestion d'erreur
+    Error_Handler();
+}
+
+
+--------------Systel CLock COnfiguration-----------------------------
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
+  RCC_OscInitStruct.PLL.PLLN = 8;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
+  RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+
+--------------RCC CLock CAN COnfiguration-----------------------------
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
+    PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PLL;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)

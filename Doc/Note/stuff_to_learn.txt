@@ -1,0 +1,196 @@
+CAN 
+    - Serial half-duplex asynchronous Communication 
+    CAN 2.0A = 11 bit identiers -> standard
+    CAN2.0B = 29 bit identifiers -> extend
+
+SOF (start-of-frame) bit – indicates the beginning of a message with a dominant (logic 0) bit.
+Arbitration ID – identifies the message and indicates the message's priority. Frames come in two formats -- standard, which uses an 11-bit arbitration ID, and extended, which uses a 29-bit arbitration ID.
+IDE (identifier extension) bit – allows differentiation between standard and extended frames.
+RTR (remote transmission request) bit – serves to differentiate a remote frame from a data frame. A dominant (logic 0) RTR bit indicates a data frame. A recessive (logic 1) RTR bit indicates a remote frame.
+DLC (data length code) – indicates the number of bytes the data field contains.
+Data Field – contains 0 to 8 bytes of data.
+CRC (cyclic redundancy check) – contains 15-bit cyclic redundancy check code and a recessive delimiter bit. The CRC field is used for error detection.
+ACK (ACKnowledgement) slot – any CAN controller that correctly receives the message sends an ACK bit at the end of the message. 
+    The transmitting node checks for the presence of the ACK bit on the bus and reattempts transmission if no acknowledge is detected.
+     National Instruments Series 2 CAN interfaces have the capability of listen-only mode. Herein, 
+     the transmission of an ACK bit by the monitoring hardware is suppressed to prevent it from affecting the behavior of the bus.
+
+
+
+High speed CAN bus:  The focus of this article is on  high speed CAN bus (ISO 11898). It is by far the most 
+popular CAN standard for the physical layer, supporting bit rates from 40 kbit/s to 1 Mbit/s (Classical CAN). It 
+provides simple cabling and is used in practically all automotive applications today. It also serves as the basis 
+for several higher layer protocols such as  OBD2  ,  J1939  ,  NMEA 2000  ,  CANopen  etc. The second generation of 
+CAN is referred to as  CAN FD (CAN with Flexible Data-rate) 
+●  Low speed CAN bus:  This standard enables bit rates  from 40 kbit/s to 125 kbit/s and allows the CAN bus 
+commmunication to continue even if there is a fault on one of the two wires - hence it is also referred to as 
+'fault tolerant CAN'. In this system, each CAN node has it's own  CAN termination 
+●  LIN bus:  LIN bus is a lower cost supplement to CAN  bus networks, with less harness and cheaper nodes. LIN 
+bus clusters typically consist of a LIN master acting as gateway and up to 16 slave nodes. Typical use cases 
+include e.g. non-critical vehicle functions like aircondition, door functionality etc. - for details see our  LIN  bus 
+intro  or  LIN bus data logger  article 
+●  Automotive ethernet:  This is increasingly being rolled  out in the automotive sector to support the high 
+bandwidth requirements of ADAS (Advanced Driver Assistance Systems), infotainment systems, cameras etc. 
+Automotive ethernet offers much higher data transfer rates vs. CAN bus, but lacks some of the 
+safety/performance features of Classical CAN and CAN FD. Most likely, the coming years will see both 
+automotive ethernet, CAN FD and  CAN XL  being used  in new automotive and industrial development
+
+
+Library stm32 working 
+- Rx Fifo peut stocker jusqu'à 3 message CAN
+- complete_callback  = fifo pleine
+- pending callback = fifo a reçu un msg
+(#) Initialize the CAN low level resources by implementing the
+          HAL_CAN_MspInit():
+         (++) Enable the CAN interface clock using __HAL_RCC_CANx_CLK_ENABLE()
+         (++) Configure CAN pins
+             (+++) Enable the clock for the CAN GPIOs
+             (+++) Configure CAN pins as alternate function open-drain
+             Connect and configure the involved CAN pins to AF9 using the following function HAL_GPIO_Init();
+         (++) In case of using interrupts (e.g. HAL_CAN_ActivateNotification())
+             (+++) Configure the CAN interrupt priority using
+                   HAL_NVIC_SetPriority()
+             (+++) Enable the CAN IRQ handler using HAL_NVIC_EnableIRQ()
+             (+++) In CAN IRQ handler, call HAL_CAN_IRQHandler()
+
+      (#) Initialize the CAN peripheral using HAL_CAN_Init() function. This
+          function resorts to HAL_CAN_MspInit() for low-level initialization.
+
+      (#) Configure the reception filters using the following configuration
+          functions:
+            (++) HAL_CAN_ConfigFilter()
+
+      (#) Start the CAN module using HAL_CAN_Start() function. At this level
+          the node is active on the bus: it receive messages, and can send
+          messages.
+
+
+(#) To manage messages transmission, the following Tx control functions
+          can be used:
+            (++) HAL_CAN_AddTxMessage() to request transmission of a new
+                 message.
+            (++) HAL_CAN_AbortTxRequest() to abort transmission of a pending
+                 message.
+            (++) HAL_CAN_GetTxMailboxesFreeLevel() to get the number of free Tx
+                 mailboxes.
+            (++) HAL_CAN_IsTxMessagePending() to check if a message is pending
+                 in a Tx mailbox.
+            (++) HAL_CAN_GetTxTimestamp() to get the timestamp of Tx message
+                 sent, if time triggered communication mode is enabled.
+
+
+typedef struct
+{
+  __IO uint32_t RIR;        (Receive Identifier Register) 11 bit or 29 bit + 1 bit de configuration  
+  __IO uint32_t RDTR;       (Receive Data Length Code and Time Stamp Register), resgister the time when the msg arrived
+  __IO uint32_t RDLR;       (Receive Data Low Register) 
+  __IO uint32_t RDHR;       (Receive Data High Register)  
+} CAN_FIFOMailBox_TypeDef;
+
+typedef struct
+{
+  __IO uint32_t MCR;    (Master Control Register) : Contrôle l'activation et la configuration générale du module CAN
+  __IO uint32_t MSR;     (Master Status Register) : Indique l'état du module CAN, y compris les erreurs et l'état de veille.
+  __IO uint32_t TSR;    (Transmit Status Register) : Indique le statut des boîtes aux lettres de transmission (disponibilité, transmission en cours, etc.).
+  __IO uint32_t RF0R;   (Receive FIFO 0 Register) : Gère l'état de la FIFO 0 de réception, comme la libération d'un message ou la notification de FIFO pleine.
+  __IO uint32_t RF1R;   
+  __IO uint32_t IER;    (Interrupt Enable Register) 
+  __IO uint32_t ESR;    (Error Status Register)
+  __IO uint32_t BTR;    (Bit Timing Register) : Configure les paramètres de synchronisation du bus CAN (vitesse de baud, synchronisation des segments de bit).
+    uint32_t  RESERVED0[88];
+  CAN_TxMailBox_TypeDef sTxMailBox[3];
+  CAN_FIFOMailBox_TypeDef sFIFOMailBox[2];
+  uint32_t  RESERVED1[12];
+  __IO uint32_t FMR;        (Filter Master Register) : Contrôle l'activation et la configuration globale du filtre CAN.
+  __IO uint32_t FM1R;
+  uint32_t  RESERVED2;
+  __IO uint32_t FS1R;       (Filter Scale Register) : Définit la largeur (échelle) de chaque filtre, soit 16 bits ou 32 bits.
+    uint32_t  RESERVED3;
+    __IO uint32_t FFA1R;    (Filter FIFO Assignment Register) : Associe chaque filtre à l’une des deux FIFO (FIFO 0 ou FIFO 1) pour le stockage des messages reçus.
+  uint32_t  RESERVED4;
+  __IO uint32_t FA1R;        (Filter Activation Register) : Active ou désactive les filtres.
+  uint32_t  RESERVED5[8];
+  CAN_FilterRegister_TypeDef sFilterRegister[14];
+} CAN_TypeDef;
+############################### CAN INIT ##################################
+####### CAN MODE #######
+CAN_MODE_NORMAL (Normal mode) :
+Ce mode correspond au mode standard du CAN, utilisé pour la communication régulière entre plusieurs nœuds.
+Dans ce mode, le contrôleur CAN est actif sur le bus : il envoie et reçoit des messages tout en participant activement à l'arbitrage et au contrôle d’erreurs du bus.
+Utilisé principalement dans les applications où le périphérique CAN doit communiquer normalement avec d'autres nœuds.
+
+CAN_MODE_LOOPBACK (Loopback mode) :
+En mode Loopback, le contrôleur CAN retourne ses propres messages pour les tester sans les envoyer réellement sur le bus CAN.
+Ce mode est principalement utilisé pour le débogage et le test, car il permet de tester les fonctions d'envoi et de réception du CAN sans interférer avec d’autres dispositifs sur le bus.
+Le contrôleur CAN ignore les erreurs du bus dans ce mode.
+
+CAN_MODE_SILENT (Silent mode) :
+En mode Silent, le contrôleur CAN peut uniquement écouter le trafic sur le bus sans envoyer de messages ni interférer avec l'arbitrage.
+Il est particulièrement utile pour des applications de diagnostic où l’on souhaite surveiller les communications CAN sans participer activement.
+Ce mode est également utile pour éviter les risques de collision avec d’autres nœuds ou lors de la surveillance de trafic dans des réseaux CAN partagés.
+
+CAN_MODE_SILENT_LOOPBACK (Loopback combined with Silent mode) :
+Ce mode combine les caractéristiques des modes Loopback et Silent.
+Dans ce mode, le contrôleur CAN ne transmet pas de messages sur le bus et ne participe pas au trafic réel, mais il effectue un loopback interne en silence.
+Idéal pour des tests de fonctionnalité interne où on veut valider l’envoi et la réception sans risquer d’interférer avec les autres dispositifs sur le bus CAN.
+
+#######  SYNCHRONISATION #######
+####### CAN_synchronisation_jump_width ####### TQ = TimeQuanta
+Quantum : division d'un bit en 3 quantums -> synchronisation, segment de propgation, Phase Segment 1 et 2
+- 1TQ  pour les horloges précises et baudrate élevé 
+2-4 TQ pour l'automobile, assure une bonne tolérance
+
+
+Sync Seg (Segment de Synchronisation) : Un seul TQ, utilisé pour synchroniser tous les nœuds du réseau à la même fréquence.
+Prop Seg (Segment de Propagation) : Utilisé pour compenser les délais de propagation du signal entre les nœuds.
+Phase Segment 1 (Phase Seg 1) : Permet l’ajustement de la durée du bit pour compenser les petites variations de fréquence ou les décalages de synchronisation entre les nœuds.
+Phase Segment 2 (Phase Seg 2) : Aide à garantir la bonne réception des bits en ajustant la fin de la durée du bit.
+
+#######  OPTION #######
+
+TimeTriggeredMode :
+Description : Cette fonctionnalité permet de configurer le mode 
+    de communication basé sur le temps. Si activée, les messages CAN sont envoyés
+    à des moments spécifiques, synchronisés avec un horloge interne, 
+    permettant un envoi périodique ou programmé.
+Valeurs possibles : ENABLE ou DISABLE.
+
+AutoBusOff :
+Description : Active la gestion automatique du mode bus-off. 
+    En mode bus-off, le contrôleur CAN se met en arrêt et cesse d'envoyer des
+    messages lorsque des erreurs graves (comme une trop grande quantité d'erreurs 
+    de transmission) se produisent. Cette fonctionnalité permet de gérer ce mode automatiquement.
+Valeurs possibles : ENABLE ou DISABLE.
+
+AutoWakeUp :
+Description : Permet au contrôleur CAN de se réveiller automatiquement 
+    lorsque le bus CAN devient actif après une période d'inactivité ou de sommeil.
+    Cela permet d’économiser de l’énergie pendant que le bus CAN est inactif.
+Valeurs possibles : ENABLE ou DISABLE.
+
+AutoRetransmission :
+Description : Active ou désactive le mode de retransmission automatique 
+    des messages CAN. Lorsqu'un message échoue à être envoyé (en raison de
+    collisions ou autres erreurs), cette fonctionnalité permet de tenter 
+    de le renvoyer automatiquement.
+Valeurs possibles : ENABLE ou DISABLE.
+
+ReceiveFifoLocked :
+Description : Permet de verrouiller la FIFO de réception afin d’empêcher 
+    toute nouvelle réception tant que les messages dans la FIFO
+     ne sont pas traités. Cela peut être utilisé pour éviter des erreurs
+      de dépassement de mémoire tampon.
+Valeurs possibles : ENABLE ou DISABLE.
+
+TransmitFifoPriority :
+Description : Permet de donner une priorité à l'envoi des messages dans 
+    la FIFO de transmission. Si activée, les messages avec des
+    priorités plus élevées seront envoyés avant les messages avec
+    des priorités plus faibles, même s'ils ont été placés dans la 
+    FIFO plus tard.
+
+
+############################### TIMING with CAN msg ##################################
+15 à 20 cycles pour l'appel du IRQ_HANDLER + L'appel de la fonction de callback 
+15 à 20 cycles pour savoir quelle CAN c'est, appel de la callback utilisateur + copie des 8 bytes de données 
+40 à 50 cycles -> 1/48MHz * 50 = 1040ns = 1 us max 
