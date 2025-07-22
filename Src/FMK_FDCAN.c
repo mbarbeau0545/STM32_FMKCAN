@@ -24,7 +24,7 @@
 #include "FMK_HAL/FMK_IO/Src/FMK_IO.h"
 #include "APP_CTRL/APP_SYS/Src/APP_SYS.h"
 
-#include "Library/Queue/Src/LIBQueue.h"
+#include "Library/QUEUE/Src/LIBQueue.h"
 #include "Library/SafeMem/SafeMem.h"
 #include "stm32g4xx_hal.h"
 
@@ -828,7 +828,7 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
                     SoTxitem_s.data_ua8[idxData_u8] = f_TxItemCfg_s.CanMsg_s.data_pu8[idxData_u8];
                 }
                 //----------Write Into Software Queue----------//
-                Ret_e = LIBQUEUE_WriteElement(&g_TxSoftQueue_as[f_Node_e], &SoTxitem_s);
+                Ret_e = LIBQUEUE_WriteElement(&g_TxSoftQueue_as[f_Node_e], &SoTxitem_s, sizeof(SoTxitem_s));
                 //----------update flag Tx Item to send/----------//
                 if(Ret_e == RC_OK)
                 {
@@ -1190,7 +1190,7 @@ static void s_FMKFDCAN_BspTxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                             && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT))
                         {
                             //---------Read an element from the queue---------//
-                            Ret_e = LIBQUEUE_ReadElement(&g_TxSoftQueue_as[idxNode_u8], &SoftTxItem_s);
+                            Ret_e = LIBQUEUE_ReadElement(&g_TxSoftQueue_as[idxNode_u8], &SoftTxItem_s, sizeof(SoftTxItem_s));
                             if (Ret_e != RC_OK)
                             {
                                 //---------Exit loop on read failure---------//
@@ -1322,7 +1322,7 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                                 Ret_e = SafeMem_memcpy(RxItemBuffer_s.data_ua8, bspData_ua8, (t_uint16)FMKFDCAN_DLC_8);
                                 if(Ret_e == RC_OK)
                                 {
-                                    Ret_e = LIBQUEUE_WriteElement(&g_RxSoftQueue_as[idxNode_u8], &RxItemBuffer_s);
+                                    Ret_e = LIBQUEUE_WriteElement(&g_RxSoftQueue_as[idxNode_u8], &RxItemBuffer_s, sizeof(RxItemBuffer_s));
                                 }
                             }
                         }
