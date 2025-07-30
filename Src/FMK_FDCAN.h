@@ -125,10 +125,10 @@ typedef struct
     *	@param[in] f_NodeStatus_e : Node health when the Msg has benn received
     *
     */
-    typedef t_eReturnCode t_cbFMKFDCAN_RcvItem(t_eFMKFDCAN_NodeList f_Node_e,
+    typedef void t_cbFMKFDCAN_RcvItem(t_eFMKFDCAN_NodeList f_Node_e,
                                                 t_sFMKFDCAN_RxItemEvent f_RxItem_s, 
                                                 t_eFMKFDCAN_NodeStatus f_NodeStatus_e);
-                                              /**
+    /**
     *
     *	@brief      Callback Function called when a Message has been succressfully send
 
@@ -221,6 +221,9 @@ typedef struct
     *               t_cbFMKFDCAN_RcvItem.\n
     *               The registration has a limitation, if the Registration buffer is pass,*
     *               RC_ERROR_LIMIT_REACHED is return.\n
+    *  @warning     At the moment data are passed as pointor to the buffer, which means,
+    *               when you will be called you always have to copy data in your own environmment 
+    *               otherwise it will be overwritten.
     *
     *
     *	@param[in] f_NodeStatus_e : CAN  Node -> enum value from @ref t_eFMKFDCAN_NodeList

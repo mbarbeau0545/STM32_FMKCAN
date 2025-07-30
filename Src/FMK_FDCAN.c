@@ -83,40 +83,8 @@ typedef struct __t_sFMKFDCAN_FlagSoft
     t_bool RxQueuePending_b;       /**< Indicates if there are pending frames in the Rx queue. */
     t_bool TxFramePrioPending_b;   /**< Indicates if a prioritized Tx frame is pending. */
     t_bool ErrorDetected_b;        /**< Indicates if an error has been detected. */
+    t_bool readOpe_b;              /**< Indicates if the read operation is on going */         
 } t_sFMKFDCAN_FlagSoft;
-
-/**
- * @brief Node information structure for FDCAN configuration and status.
- */
-typedef struct __t_sFMKFDCAN_NodeInfo
-{
-    FDCAN_HandleTypeDef bspNode_s;           /**< BSP handle for FDCAN peripheral. */
-    t_eFMKCPU_ClockPort c_Clock_e;     /**< Clock port associated with the FDCAN node. */
-    t_eFMKCPU_IRQNType c_IrqnLine1_e;  /**< IRQ line 1 associated with the FDCAN peripheral. */
-    t_eFMKCPU_IRQNType c_IrqnLine2_e;  /**< IRQ line 2 associated with the FDCAN peripheral. */
-    t_sFMKFDCAN_FlagSoft Flag_s;             /**< Software flags related to the FDCAN node. */
-    t_bool isNodeConfigured_b;               /**< Indicates if the FDCAN node has been configured. */
-    t_bool isNodeActive_b;                   /**< Indicates if the FDCAN node is active and operational. */
-    t_eFMKFDCAN_NodeStatus nodeHealth_e;      /**< Node status */
-} t_sFMKFDCAN_NodeInfo;
-
-/**
- * @brief Rx item buffer structure for receiving FDCAN frames.
- */
-typedef struct __t_sFMKFDCAN_RxItemBuffer
-{
-    FDCAN_RxHeaderTypeDef bspRxItem_s; /**< FDCAN BSP Rx header structure for frame details. */
-    t_uint8 data_ua8[FMKFDCAN_DLC_8];  /**< Data buffer for the received frame. */
-} t_sFMKFDCAN_RxItemBuffer;
-
-/**
- * @brief Tx item buffer structure for transmitting FDCAN frames.
- */
-typedef struct 
-{
-    FDCAN_TxHeaderTypeDef bspTxItem_s; /**< FDCAN BSP Tx header structure for frame details. */
-    t_uint8 data_ua8[FMKFDCAN_DLC_8];  /**< Data buffer for the frame to transmit. */
-} t_sFMKFDCAN_TxItemBuffer;
 
 /**
  * @brief User register structure for managing FDCAN items and callbacks.
@@ -126,7 +94,53 @@ typedef struct
     t_sFMKFDCAN_ItemIdentifier itemId_s; /**< Identifier structure for the FDCAN item. */
     t_uint32 maskId_u32;                 /**< Mask identifier for the FDCAN item. */
     t_cbFMKFDCAN_RcvItem *rcvItem_cb;    /**< Callback function to handle received items. */
-} t_sFMKFDCAN_UserItemRegister;
+} t_sFMKFDCAN_UserItemSub;
+
+///@brief Strucutre for diagnostic purpose 
+typedef struct 
+{
+    t_uint32 rxMsgReceived_u32;      /**< Number of msg actually received  */
+    t_uint32 rxMsgProcess_u32;      /**< Number of msg process */
+    t_uint32 rxMsgDropped_u32;      /**< Number of message lost */
+    t_uint32 rxOverflow_u32         /**< Number of rx Fifo overflow */
+} t_sFMKFDCAN_RxMSgDiag;
+/**
+ * @brief Node information structure for FDCAN configuration and status.
+ */
+typedef struct __t_sFMKFDCAN_NodeInfo
+{
+    FDCAN_HandleTypeDef bspNode_s;                          /**< BSP handle for FDCAN peripheral. */
+    t_sLIBQUEUE_QueueCore TxSoftQueue_s;                    /**< Transmission Queue management*/
+    t_sLIBQUEUE_QueueCore RxSoftQueue_s;                    /**< Transmission Queue management*/
+    t_sFMKFDCAN_UserItemSub * userSubInfo_pas;              /**< Pointor to user register information */
+    t_sFMKFDCAN_RxMSgDiag rxMsgDiag_s;
+    t_uint8 nbSubscriptions_u8;                             /**< Number of subscription done for the node */
+    t_eFMKCPU_ClockPort c_Clock_e;                          /**< Clock port associated with the FDCAN node. */
+    t_eFMKCPU_IRQNType c_IrqnLine1_e;                       /**< IRQ line 1 associated with the FDCAN peripheral. */
+    t_eFMKCPU_IRQNType c_IrqnLine2_e;                       /**< IRQ line 2 associated with the FDCAN peripheral. */
+    t_sFMKFDCAN_FlagSoft Flag_s;                            /**< Software flags related to the FDCAN node. */
+    t_bool isNodeConfigured_b;                              /**< Indicates if the FDCAN node has been configured. */
+    t_bool isNodeActive_b;                                  /**< Indicates if the FDCAN node is active and operational. */
+    t_eFMKFDCAN_NodeStatus nodeHealth_e;                    /**< Node status */
+} t_sFMKFDCAN_NodeInfo;
+
+/**
+ * @brief Rx item buffer structure for receiving FDCAN frames.
+ */
+typedef struct __t_sFMKFDCAN_RxItemBuffer
+{
+    FDCAN_RxHeaderTypeDef bspRxItem_s; /**< FDCAN BSP Rx header structure for frame details. */
+    t_uint8 data_ua8[FMKFDCAN_RX_DATA_SIZE];  /**< Data buffer for the received frame. */
+} t_sFMKFDCAN_RxItemBuffer;
+
+/**
+ * @brief Tx item buffer structure for transmitting FDCAN frames.
+ */
+typedef struct 
+{
+    FDCAN_TxHeaderTypeDef bspTxItem_s; /**< FDCAN BSP Tx header structure for frame details. */
+    t_uint8 data_ua8[FMKFDCAN_TX_DATA_SIZE];  /**< Data buffer for the frame to transmit. */
+} t_sFMKFDCAN_TxItemBuffer;
 
 
 
@@ -149,16 +163,11 @@ t_sFMKFDCAN_NodeInfo g_NodeInfo_as[FMKFDCAN_NODE_NB];
 /**< Transmission software Buffer*/
 t_sFMKFDCAN_TxItemBuffer g_TxSoftBuffer_as[FMKFDCAN_NODE_NB][FMKFDCAN_TX_SOFT_BUFF_SIZE];
 /**< Transmission Queue management*/
-t_sLIBQUEUE_QueueCore g_TxSoftQueue_as[FMKFDCAN_NODE_NB];
 /*------------------------WITH CALLBACK (EVENT) MANAGMENT-------------------------------*/
 t_sFMKFDCAN_RxItemBuffer g_RxBufferEvnt_as[FMKFDCAN_NODE_NB][FMKFDCAN_RX_SOFT_BUFF_SIZE];
-/**< Reception Queue management*/
-t_sLIBQUEUE_QueueCore g_RxSoftQueue_as[FMKFDCAN_NODE_NB];
-/**< User Item Registration Managment */
-t_sFMKFDCAN_UserItemRegister g_UserRegisterEvnt_as[FMKFDCAN_NODE_NB][FMKFDCAN_RX_NUM_REGISTRATION_EVNT];
-/**< Save the number of register already received */
-t_uint8 g_CtrUserRegisterEvnt_ua8[FMKFDCAN_NODE_NB];
 
+/**< User Item Registration Managment */
+t_sFMKFDCAN_UserItemSub g_UserRegisterEvnt_as[FMKFDCAN_NODE_NB][FMKFDCAN_RX_NUM_REGISTRATION_EVNT];
 
 /**< Hardware Interrupt Management */
 t_eFMKFDCAN_BspStatusCb g_BspCbMngmt_ae[FMKFDCAN_NODE_NB][FMKFDCAN_BSP_CB_NB];
@@ -283,7 +292,7 @@ static void s_FMKFDCAN_BspErrorEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
  *
  */
 static t_eReturnCode s_FMKFDCAN_RetrieveRxItem(t_eFMKFDCAN_NodeList f_Node_e,
-                                                  t_eFMKFDCAN_HwRxFifoList f_RxFifo_e,
+                                                  t_uint32 f_BspRxFifo_u32,
                                                   FDCAN_RxHeaderTypeDef * f_bspRxItem_ps,
                                                   t_uint8 * f_bspData_pu8);
 /**
@@ -317,15 +326,15 @@ static t_eReturnCode s_FMKFDCAN_CopyBspRxItem(FDCAN_RxHeaderTypeDef *f_bspRxItem
 /**
  *	@brief      Get the user Register Index from Software Fifo Buffer.\n
  *	@note       This function purpose is to find the RxItem store into software buffer
- *              using f_Identifier_u32 and f_NodeRegister_pas.\n
+ *              using f_Identifier_u32 and f_nodeSubs_pas.\n
  *              At the Registration we copy Identifier and Mask into Software Buffer Registration.\n
  *              In order to return f_idxUserRegister_pu8, We compare every Buffer_item & mask with
  *              f_Identifier_u32 and the mask.\n
  *              If the Identifier is not found in Software Buffer f_idxUserRegister_pu8 = 0
  *
  *	@param[in] f_Identifier_u32 : The identifier to find into Registration
- *	@param[in] f_NodeRegister_pas : Registration Software Buffer -> @ref t_sFMKFDCAN_UserItemRegister
- *	@param[in] f_RegistrationCtr_u8 : Number of registration which as been made in f_NodeRegister_pas
+ *	@param[in] f_nodeSubs_pas : Registration Software Buffer -> @ref t_sFMKFDCAN_UserItemSub
+ *	@param[in] f_RegistrationCtr_u8 : Number of registration which as been made in f_nodeSubs_pas
  *	@param[in] f_idxUserRegister_pu8 : Storage for Idx Register.\n
  *	 
  *  @retval RC_OK                             @ref RC_OK
@@ -334,7 +343,7 @@ static t_eReturnCode s_FMKFDCAN_CopyBspRxItem(FDCAN_RxHeaderTypeDef *f_bspRxItem
  *
  */
 static t_eReturnCode s_FMKFDCAN_GetUserRegisterIndex(t_uint32 f_Identifier_u32,
-                                                     t_sFMKFDCAN_UserItemRegister * f_NodeRegister_pas,
+                                                     t_sFMKFDCAN_UserItemSub * f_nodeSubs_pas,
                                                      t_uint8 f_RegistrationCtr_u8,
                                                      t_uint8 * f_idxUserRegister_pu8);
 
@@ -388,6 +397,33 @@ static t_eReturnCode s_FMKFDCAN_SetHwBspCallbackStatus(t_eFMKFDCAN_NodeList f_No
  *  @retval RC_ERROR_WRONG_RESULT             @ref RC_ERROR_WRONG_RESULT
  */
 static t_eReturnCode s_FMKFDCAN_SetHwFifoOpeMode(t_eFMKFDCAN_NodeList f_Node_e ,t_eFMKFDCAN_FifoOpeMode f_fifoMode_e);
+/**
+ *	@brief      Module FDCAN Fast Task, call every 5 ms.\n
+ *	@note       This function deal with Rx Software Fifo, take several elements
+ *              from the Fifo, interpret it and call user with registration mapping
+ *              If there is some Tx Fifo item, we will try to put it into Hardware Fifo.\n
+ *              
+ *	 
+ */
+static void s_FMKFDCAN_FastTask(void);
+/**
+ *	@brief      Module FDCAN Fast Task, call every 5 ms.\n
+ *	@note       This function deal with Rx Software Fifo, take several elements
+ *              from the Fifo, interpret it and call user with registration mapping
+ *              If there is some Tx Fifo item, we will try to put it into Hardware Fifo.\n
+ *              
+ *	 
+ */
+static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e);
+/**
+ *	@brief      Module FDCAN Fast Task, call every 5 ms.\n
+ *	@note       This function deal with Rx Software Fifo, take several elements
+ *              from the Fifo, interpret it and call user with registration mapping
+ *              If there is some Tx Fifo item, we will try to put it into Hardware Fifo.\n
+ *              
+ *	 
+ */
+static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e);
 /**
  *	@brief          Get the Bsp Callback Identifier from Software enum.\n
  *
@@ -556,7 +592,6 @@ t_eReturnCode FMKFDCAN_Init(void)
     t_uint8 idxBspCallback_u8;
     t_uint8 idxNode_u8 = (t_uint8)0;
     t_uint8 LLI_u8 = (t_uint8)0;
-    t_uint8 LLI2_u8 = (t_uint8)0;
 
     t_sLIBQUEUE_QueueCfg TxBufferCfg_s = {
         .bufferSize_u8 = FMKFDCAN_TX_SOFT_BUFF_SIZE,
@@ -575,22 +610,25 @@ t_eReturnCode FMKFDCAN_Init(void)
         // init bufferHead_p
         RxBufferCfg_s.bufferHead_pv = (void *)NULL;
         // init Node Global Inforamtion
-        g_NodeInfo_as[idxNode_u8].Flag_s.ErrorDetected_b      = (t_bool)False;
-        g_NodeInfo_as[idxNode_u8].Flag_s.RxQueuePending_b     = (t_bool)False;
-        g_NodeInfo_as[idxNode_u8].Flag_s.TxQueuePending_b     = (t_bool)False;
-        g_NodeInfo_as[idxNode_u8].Flag_s.TxFramePrioPending_b = (t_bool)False;
-        g_NodeInfo_as[idxNode_u8].isNodeActive_b              = (t_bool)False;
-        g_NodeInfo_as[idxNode_u8].isNodeConfigured_b          = (t_bool)False;
-        g_NodeInfo_as[idxNode_u8].nodeHealth_e                = FMKFDCAN_NODE_STATE_OK;
-        g_NodeInfo_as[idxNode_u8].c_Clock_e                   = c_FmkFdcan_NodeCfg_as[idxNode_u8].c_Clock_e;
-        g_NodeInfo_as[idxNode_u8].c_IrqnLine1_e               = c_FmkFdcan_NodeCfg_as[idxNode_u8].c_Clock_e;
-        g_NodeInfo_as[idxNode_u8].c_IrqnLine2_e               = c_FmkFdcan_NodeCfg_as[idxNode_u8].c_Clock_e;
-        g_NodeInfo_as[idxNode_u8].bspNode_s.Instance          = c_FmkFdcan_NodeCfg_as[idxNode_u8].Instance;
+        g_NodeInfo_as[idxNode_u8].Flag_s.ErrorDetected_b        = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].Flag_s.readOpe_b              = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].Flag_s.RxQueuePending_b       = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].Flag_s.TxQueuePending_b       = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].Flag_s.TxFramePrioPending_b   = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].isNodeActive_b                = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].isNodeConfigured_b            = (t_bool)False;
+        g_NodeInfo_as[idxNode_u8].nodeHealth_e                  = FMKFDCAN_NODE_STATE_OK;
+        g_NodeInfo_as[idxNode_u8].c_Clock_e                     = c_FmkFdcan_NodeCfg_as[idxNode_u8].c_Clock_e;
+        g_NodeInfo_as[idxNode_u8].c_IrqnLine1_e                 = c_FmkFdcan_NodeCfg_as[idxNode_u8].c_IrqnLine1_e;
+        g_NodeInfo_as[idxNode_u8].c_IrqnLine2_e                 = c_FmkFdcan_NodeCfg_as[idxNode_u8].c_IrqnLine2_e;
+        g_NodeInfo_as[idxNode_u8].bspNode_s.Instance            = c_FmkFdcan_NodeCfg_as[idxNode_u8].Instance;
+        g_NodeInfo_as[idxNode_u8].userSubInfo_pas               = (t_sFMKFDCAN_UserItemSub *)(&g_UserRegisterEvnt_as[idxNode_u8][0]);
+        g_NodeInfo_as[idxNode_u8].nbSubscriptions_u8            = (t_uint8)0;
+        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxMsgDropped_u32  = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxMsgProcess_u32  = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxMsgReceived_u32 = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxOverflow_u32 = (t_uint32)0;
 
-
-        
-        // Init countor register 
-        g_CtrUserRegisterEvnt_ua8[idxNode_u8] = (t_uint8)0;
         //-------------------Init Bsp Callback To Deactivate----------------//
         for(idxBspCallback_u8 = (t_uint8)0 ; idxBspCallback_u8 < FMKFDCAN_BSP_CB_NB ; idxBspCallback_u8++)
         {
@@ -608,11 +646,6 @@ t_eReturnCode FMKFDCAN_Init(void)
             g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.IsFilterMatchingFrame = (t_uint32)0;
             g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.RxFrameType = (t_uint32)0;
             g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.RxTimestamp = (t_uint32)0;
-            // init buffer data
-            for (LLI2_u8 = (t_uint8)0; LLI2_u8 < FMKFDCAN_DLC_8 ; LLI2_u8++)
-            {
-                g_RxBufferEvnt_as[idxNode_u8][LLI_u8].data_ua8[LLI2_u8] = (t_uint8)0;
-            }
         }
 
         for(LLI_u8 = (t_uint8)0 ; LLI_u8 < FMKFDCAN_TX_SOFT_BUFF_SIZE ; LLI_u8++)
@@ -626,12 +659,8 @@ t_eReturnCode FMKFDCAN_Init(void)
             g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.MessageMarker = (t_uint32)0;
             g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.TxEventFifoControl = (t_uint32)0;
             g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.TxFrameType = (t_uint32)0;
-            // init buffer data
-            for (LLI2_u8 = (t_uint8)0; LLI2_u8 < FMKFDCAN_DLC_8 ; LLI2_u8++)
-            {
-                g_TxSoftBuffer_as[idxNode_u8][LLI_u8].data_ua8[LLI2_u8] = (t_uint8)0;
-            }
         }
+
         //-------------------Initialize RxItem Registration ----------------//
         for(LLI_u8 = (t_uint8)0 ; LLI_u8 < (t_uint8)FMKFDCAN_RX_NUM_REGISTRATION_EVNT ; LLI_u8++)
         {
@@ -644,12 +673,12 @@ t_eReturnCode FMKFDCAN_Init(void)
         //-------------------Configure the Rx, Tx Queue----------------//
         RxBufferCfg_s.bufferHead_pv = g_RxBufferEvnt_as[idxNode_u8];
         // Configure Rx Buffer Queue
-        Ret_e = LIBQUEUE_Create(&g_RxSoftQueue_as[idxNode_u8], RxBufferCfg_s);
+        Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, RxBufferCfg_s);
         // Configure Tx Buffer Queue
         if(Ret_e == RC_OK)
         {
             TxBufferCfg_s.bufferHead_pv = g_TxSoftBuffer_as[idxNode_u8];
-            Ret_e = LIBQUEUE_Create(&g_TxSoftQueue_as[idxNode_u8], TxBufferCfg_s);
+            Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].TxSoftQueue_s, TxBufferCfg_s);
         }
     }
     
@@ -744,36 +773,41 @@ t_eReturnCode FMKFDCAN_SetState(t_eCyclicModState f_State_e)
 *********************************/
 t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_RxItemEventCfg f_RxItemCfg_s)
 {
-    t_eReturnCode Ret_e = RC_OK;
+    t_eReturnCode Ret_e;
     t_uint8 idxCounter_u8 = (t_uint8)0;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
 
     if((f_Node_e >= FMKFDCAN_NODE_NB)
     || (f_RxItemCfg_s.callback_cb == (t_cbFMKFDCAN_RcvItem *)NULL_FUNCTION))
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
-    if(g_NodeInfo_as[f_Node_e].isNodeConfigured_b == (t_bool)False)
-    {
-        Ret_e = RC_ERROR_INSTANCE_NOT_INITIALIZED;
-    }
-    if(g_CtrUserRegisterEvnt_ua8[f_Node_e] >= FMKFDCAN_RX_NUM_REGISTRATION_EVNT)
-    {
-        Ret_e = RC_ERROR_LIMIT_REACHED;
-    }
-    if(Ret_e == RC_OK)
-    {
-        //-------------------Copy Information into Register Node Variable-------------------//
-        idxCounter_u8 = g_CtrUserRegisterEvnt_ua8[f_Node_e];
-        g_UserRegisterEvnt_as[f_Node_e][idxCounter_u8].itemId_s.Identifier_u32 = f_RxItemCfg_s.ItemId_s.Identifier_u32;
-        g_UserRegisterEvnt_as[f_Node_e][idxCounter_u8].itemId_s.FramePurpose_e = f_RxItemCfg_s.ItemId_s.FramePurpose_e;
-        g_UserRegisterEvnt_as[f_Node_e][idxCounter_u8].itemId_s.IdType_e = f_RxItemCfg_s.ItemId_s.IdType_e;
-        g_UserRegisterEvnt_as[f_Node_e][idxCounter_u8].maskId_u32 = f_RxItemCfg_s.maskId_u32;
-        g_UserRegisterEvnt_as[f_Node_e][idxCounter_u8].rcvItem_cb = f_RxItemCfg_s.callback_cb;
+    else 
+    {   
+        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_Node_e]);
+        if(nodeInfo_ps->isNodeConfigured_b == (t_bool)False)
+        {
+            Ret_e = RC_ERROR_INSTANCE_NOT_INITIALIZED;
+        }
+        if(nodeInfo_ps->nbSubscriptions_u8 >= FMKFDCAN_RX_NUM_REGISTRATION_EVNT)
+        {
+            Ret_e = RC_ERROR_LIMIT_REACHED;
+        }
+        else
+        {
+            Ret_e = RC_OK;            
+            //-------------------Copy Information into Register Node Variable-------------------//
+            idxCounter_u8 = nodeInfo_ps->nbSubscriptions_u8;
+            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].itemId_s.Identifier_u32 = f_RxItemCfg_s.ItemId_s.Identifier_u32;
+            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].itemId_s.FramePurpose_e = f_RxItemCfg_s.ItemId_s.FramePurpose_e;
+            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].itemId_s.IdType_e = f_RxItemCfg_s.ItemId_s.IdType_e;
+            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].maskId_u32 = f_RxItemCfg_s.maskId_u32;
+            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].rcvItem_cb = f_RxItemCfg_s.callback_cb;
 
-        //-------------------update countor Register-------------------//
-        g_CtrUserRegisterEvnt_ua8[f_Node_e] += (t_uint8)1;
+            //-------------------update countor Register-------------------//
+            nodeInfo_ps->nbSubscriptions_u8 += (t_uint8)1;
+        }
     }
-
     return Ret_e;
 }
 
@@ -782,10 +816,10 @@ t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFM
 *********************************/
 t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItemCfg f_TxItemCfg_s)
 {
-    t_eReturnCode Ret_e = RC_OK;
+    t_eReturnCode Ret_e;
     HAL_StatusTypeDef bspRet_e = HAL_OK;
     t_sFMKFDCAN_TxItemBuffer SoTxitem_s;
-    t_uint8 idxData_u8;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
     t_uint32 fifoLevel_u32 = 0;
 
 
@@ -797,20 +831,21 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
     {
         Ret_e = RC_WARNING_BUSY;
     }
-    if(Ret_e == RC_OK)
+    else
     {
+        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo * )(&g_NodeInfo_as[f_Node_e]);
         //------------------- Copy Bsp TxItem in BspTxItem-------------------//
         Ret_e = s_FMKFDCAN_CopyBspTxItem(&f_TxItemCfg_s, &SoTxitem_s.bspTxItem_s);
         if(Ret_e == RC_OK)
         {
-            fifoLevel_u32 = HAL_FDCAN_GetTxFifoFreeLevel(&g_NodeInfo_as[f_Node_e].bspNode_s);
+            fifoLevel_u32 = HAL_FDCAN_GetTxFifoFreeLevel(&nodeInfo_ps->bspNode_s);
 
             // if the hardware buffer is not full, add directly the message 
             // else put it in the software buffer only if there <= DLC_8 Bytes
             // and activate IT notification to send msg from HAL Callback
             if(fifoLevel_u32 > (t_uint32)0)
             {
-                bspRet_e = HAL_FDCAN_AddMessageToTxFifoQ(&g_NodeInfo_as[f_Node_e].bspNode_s,
+                bspRet_e = HAL_FDCAN_AddMessageToTxFifoQ(&nodeInfo_ps->bspNode_s,
                                                         &SoTxitem_s.bspTxItem_s,
                                                         f_TxItemCfg_s.CanMsg_s.data_pu8);
                 if(bspRet_e != HAL_OK)
@@ -819,29 +854,25 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
                 }
             }
             //-----if hardware fifo Tx full, put in in software fifo if dlc <= 8-----//
-            else if (f_TxItemCfg_s.CanMsg_s.Dlc_e <= FMKFDCAN_DLC_8)
+            else
             {
                 //----------copy structure into SoTxitem_s----------//
                 //-----Copy data Into Software Buffer Structre-----//
-                for(idxData_u8 = (t_uint8)0 ; idxData_u8 < FMKFDCAN_DLC_8 ; idxData_u8++)
+                Ret_e = SafeMem_memcpy( &SoTxitem_s.data_ua8, 
+                                        f_TxItemCfg_s.CanMsg_s.data_pu8,
+                                        (t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
+                if(Ret_e == RC_OK)
                 {
-                    SoTxitem_s.data_ua8[idxData_u8] = f_TxItemCfg_s.CanMsg_s.data_pu8[idxData_u8];
+                    //----------Write Into Software Queue----------//
+                    Ret_e = LIBQUEUE_WriteElement(  &nodeInfo_ps->TxSoftQueue_s, 
+                                                    &SoTxitem_s, 
+                                                    sizeof(t_sFMKFDCAN_TxItemBuffer));
                 }
-                //----------Write Into Software Queue----------//
-                Ret_e = LIBQUEUE_WriteElement(&g_TxSoftQueue_as[f_Node_e], &SoTxitem_s, sizeof(SoTxitem_s));
                 //----------update flag Tx Item to send/----------//
                 if(Ret_e == RC_OK)
                 {
-                    g_NodeInfo_as[f_Node_e].Flag_s.TxQueuePending_b = True;
-                    //----------Activate Notification /----------//
-                    Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(f_Node_e, 
-                                                            FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE,
-                                                            FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+                    nodeInfo_ps->Flag_s.TxQueuePending_b = True;
                 }
-            }
-            else 
-            {
-                Ret_e = RC_WARNING_BUSY;
             }
         }
         
@@ -862,7 +893,7 @@ t_eReturnCode FMKFDCAN_GetRxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_RxIt
     t_eFMKFDCAN_DataLength dataLenght_e;
     t_uint32 FIFO_Id_u32 = (t_uint32)0;
     FDCAN_RxHeaderTypeDef bspRxITem_s;
-    t_uint8 data_pu8[8];
+    t_uint8 data_pu8[FMKFDCAN_64_BYTES];
     HAL_StatusTypeDef bspRet_e = HAL_OK;
 
     if(f_RxItem_ps == (t_sFMKFDCAN_RxItemEvent * )NULL)
@@ -1041,6 +1072,13 @@ static t_eReturnCode s_FMKFDCAN_ConfigurationState(void)
             
             //-----------------Call Init Driver Managment----------------//
             Ret_e = s_FMKFDCAN_InitDriver((t_eFMKFDCAN_NodeList)idxNode_u8, nodeCfg_s);
+            
+            //---- add fast task callback ----//
+            if(Ret_e == RC_OK)
+            {
+                Ret_e = APPSYS_AddFastTask( APPSYS_MODULE_FMK_CAN, 
+                                            s_FMKFDCAN_FastTask);
+            }
         }
     }
 
@@ -1057,7 +1095,7 @@ static t_eReturnCode s_FMKFDCAN_PreOperational(void)
     //----------Activate Notification that are always ON----------//
     for(idxNode_u8 = (t_uint8)0; idxNode_u8 < FMKFDCAN_NODE_NB ; idxNode_u8++)
     {
-        if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b ==(t_bool)True)
+        if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)True)
         {
                   
             //---------- CallBack for every FIFO_0 Event----------//
@@ -1102,6 +1140,9 @@ static t_eReturnCode s_FMKFDCAN_PreOperational(void)
             {
                 //---------- Update Flag----------//
                 g_NodeInfo_as[idxNode_u8].isNodeActive_b = (t_bool)True;
+
+                Ret_e = APPSYS_SetFastTaskState(APPSYS_MODULE_FMK_CAN,
+                                                APPSYS_FAST_TASK_ENABLE);
             }
         }
     }
@@ -1145,15 +1186,11 @@ static t_eReturnCode s_FMKFDCAN_Operational(void)
 * s_FMKFDCAN_BspTxEventCb
 ******************************/
 static void s_FMKFDCAN_BspTxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps, 
-                                              t_uint32 f_EvntCbInfo_u32, 
-                                              t_eFMKFDCAN_BspCallbackList f_bspTxCallback_e)
+                                    t_uint32 f_EvntCbInfo_u32, 
+                                    t_eFMKFDCAN_BspCallbackList f_bspTxCallback_e)
 {
     t_eReturnCode Ret_e = RC_OK;
-    HAL_StatusTypeDef bspRet_e = HAL_OK;
-    t_uint8 TxQueueSize_u8;
     t_uint8 idxNode_u8;
-    t_sFMKFDCAN_TxItemBuffer SoftTxItem_s;
-    t_uint8 msgProcessed_u8 = 0;
 
     if(f_bspInfo_ps == (FDCAN_HandleTypeDef *)NULL)
     {
@@ -1179,54 +1216,7 @@ static void s_FMKFDCAN_BspTxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 case FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE:
                 case FMKFDCAN_BSP_TX_CB_FIFO_EMPTY:
                 {
-                    //---------Check if there are messages pending in the queue---------//
-                    if (g_NodeInfo_as[idxNode_u8].Flag_s.TxQueuePending_b == (t_bool)True)
-                    {
-                        LIBQUEUE_GetActualSize(&g_TxSoftQueue_as[idxNode_u8], &TxQueueSize_u8);
-
-                        //---------Process messages from the queue, respecting the maximum limit per interrupt---------//
-                        
-                        while ((TxQueueSize_u8 > 0) 
-                            && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT))
-                        {
-                            //---------Read an element from the queue---------//
-                            Ret_e = LIBQUEUE_ReadElement(&g_TxSoftQueue_as[idxNode_u8], &SoftTxItem_s, sizeof(SoftTxItem_s));
-                            if (Ret_e != RC_OK)
-                            {
-                                //---------Exit loop on read failure---------//
-                                break;
-                            }
-
-                            //---------Attempt to send the message to the hardware buffer---------//
-                            bspRet_e = HAL_FDCAN_AddMessageToTxFifoQ(&g_NodeInfo_as[idxNode_u8].bspNode_s,
-                                                                    &SoftTxItem_s.bspTxItem_s,
-                                                                    SoftTxItem_s.data_ua8);
-                            if (bspRet_e != HAL_OK)
-                            {
-                                Ret_e = RC_ERROR_WRONG_RESULT;
-                                break;
-                            }
-
-                            //---------Increment processed message count---------//
-                            msgProcessed_u8++;
-
-                            //---------Update the queue size---------//
-                            LIBQUEUE_GetActualSize(&g_TxSoftQueue_as[idxNode_u8], &TxQueueSize_u8);
-                        }
-
-                        //---------If the queue is empty, deactivate the callback and update the flag---------//
-                        if (TxQueueSize_u8 == 0)
-                        {
-                            Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(idxNode_u8, 
-                                                                    FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE,
-                                                                    FMKFDCAN_CALLBACK_STATUS_DEACTIVATE);
-                                                                    
-                            g_NodeInfo_as[idxNode_u8].Flag_s.TxQueuePending_b = (t_bool)False;
-                        }
-                    }
-                        
-                        
-                        break;
+                    break;
                 }
                 case FMKFDCAN_BSP_TX_CB_BUFFER_ABORT:
                     // Error Management
@@ -1252,12 +1242,11 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
     t_eReturnCode Ret_e = RC_OK;
     t_uint8 idxNode_u8;
     t_uint8 LLI_u8;
-    t_uint8 bspData_ua8[FMKFDCAN_64_BYTES];
-    t_uint8 idxUserRegister_u8 = 0;
-    /**< Structure that contains Bsp Information */
+    t_uint8 nbItemLeftQueue_u8;
+    t_uint8 nbMsgToTreat_u8 = (t_uint8)0;
     t_sFMKFDCAN_RxItemBuffer RxItemBuffer_s;
-    t_eFMKFDCAN_HwRxFifoList RxFifo_e = FMKFDCAN_HW_RX_FIFO_NB;
-    t_sFMKFDCAN_RxItemEvent RxItemEvent_s;
+    t_sFMKFDCAN_NodeInfo * nodeInfos_ps = NULL;
+    t_uint32 bspRxFifo_32 = (t_uint32)0;
 
     // First we try to found the Node that causes the interruption with f_bspInfo_ps
     // Then we try to found which FIFO xauses the interruption with f_bspRxCallback_e
@@ -1273,20 +1262,22 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
         {
             if(&g_NodeInfo_as[idxNode_u8].bspNode_s == f_bspInfo_ps)
             {
+                nodeInfos_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[idxNode_u8]);
                 break;
             }
         }
-        if(idxNode_u8 != FMKFDCAN_NODE_NB)
+        if((idxNode_u8 != FMKFDCAN_NODE_NB)
+        && nodeInfos_ps != (t_sFMKFDCAN_NodeInfo *)NULL)
         {
             switch(f_bspRxCallback_e)
             {
                 case FMKFDCAN_BSP_RX_CB_FIFO_0:
-                    RxFifo_e = FMKFDCAN_HW_RX_FIFO_0;
+                    bspRxFifo_32 = FDCAN_RX_FIFO0;
                    
                     break;
                 case FMKFDCAN_BSP_RX_CB_FIFO_1:
                 {   
-                    RxFifo_e = FMKFDCAN_HW_RX_FIFO_1;
+                    bspRxFifo_32 = FDCAN_RX_FIFO1;
                     break;
                 }
                 //---------Not Deal With This Function---------//
@@ -1299,106 +1290,92 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 default: 
                     break;
             }
-            if(RxFifo_e != FMKFDCAN_HW_RX_FIFO_NB)
+            if(bspRxFifo_32 != (t_uint32)0)
             {
+                nbMsgToTreat_u8 = HAL_FDCAN_GetRxFifoFillLevel(&nodeInfos_ps->bspNode_s,
+                                                                bspRxFifo_32);
                 switch(f_EvntCbInfo_u32)
                 {
                     case FDCAN_IT_RX_FIFO0_FULL:
                     case FDCAN_IT_RX_FIFO1_FULL:
-                    {
-                        for(LLI_u8 = (t_uint8)0; (LLI_u8 < FMKFDCAN_MAX_ITEM_ON_QUEUE_PER_IT) 
-                            && (Ret_e == RC_OK) ; LLI_u8++)
-                        {
-                            //---------Get a msg from Hardware Buffer---------//
-                            Ret_e = s_FMKFDCAN_RetrieveRxItem(idxNode_u8, 
-                                                            RxFifo_e,
-                                                            &RxItemBuffer_s.bspRxItem_s,
-                                                            bspData_ua8);
-                            //---------Copy into buffer only if DataLenght <= 8---------//
-                            if((Ret_e == RC_OK )
-                            &&( RxItemBuffer_s.bspRxItem_s.DataLength <= FDCAN_DLC_BYTES_8))
-                            {
-                                //--------- Copy Into Data Item Software Buffer---------//
-                                Ret_e = SafeMem_memcpy(RxItemBuffer_s.data_ua8, bspData_ua8, (t_uint16)FMKFDCAN_DLC_8);
-                                if(Ret_e == RC_OK)
-                                {
-                                    Ret_e = LIBQUEUE_WriteElement(&g_RxSoftQueue_as[idxNode_u8], &RxItemBuffer_s, sizeof(RxItemBuffer_s));
-                                }
-                            }
-                        }
-                        //---------Flag RxFrame Pending ---------//
-                        g_NodeInfo_as[idxNode_u8].Flag_s.RxQueuePending_b = (t_bool)True;
-                        break;
-                    }
+                        nodeInfos_ps->rxMsgDiag_s.rxOverflow_u32++;
+                    break;
                     
                     case FDCAN_IT_RX_FIFO0_NEW_MESSAGE:
                     case FDCAN_IT_RX_FIFO1_NEW_MESSAGE:
-                    {
-                        Ret_e = s_FMKFDCAN_RetrieveRxItem(idxNode_u8, 
-                                                            RxFifo_e,
-                                                            &RxItemBuffer_s.bspRxItem_s,
-                                                            RxItemBuffer_s.data_ua8);
-                        if(Ret_e == RC_OK)
-                        {
-                            Ret_e = s_FMKFDCAN_CopyBspRxItem(&RxItemBuffer_s.bspRxItem_s, 
-                                                            &RxItemEvent_s,
-                                                            RxItemBuffer_s.data_ua8);
-                        }
-                        if(Ret_e == RC_OK)
-                        {
-                            //---------Find in Registration the Registerindex of the ItemId---------//
-                            Ret_e = s_FMKFDCAN_GetUserRegisterIndex(RxItemBuffer_s.bspRxItem_s.Identifier,
-                                                                    g_UserRegisterEvnt_as[idxNode_u8],
-                                                                    g_CtrUserRegisterEvnt_ua8[idxNode_u8],
-                                                                    &idxUserRegister_u8);
-                        }
-                        if(Ret_e == RC_OK)
-                        {
-                            //--------- Call Callback User with RxItem---------//
-                            g_UserRegisterEvnt_as[idxNode_u8][idxUserRegister_u8].rcvItem_cb(idxNode_u8, RxItemEvent_s, 0);
-                            #warning('No diagnostic on NodeStatus')
-                        }
-                        break;
-                    }
+                        nodeInfos_ps->rxMsgDiag_s.rxMsgReceived_u32++;
+                    break;
                     case FDCAN_IT_RX_FIFO0_MESSAGE_LOST:
                     case FDCAN_IT_RX_FIFO1_MESSAGE_LOST:
-                    {
-                        break;
-                    }
+                        nodeInfos_ps->rxMsgDiag_s.rxMsgDropped_u32++;
+                    break;
                     default:
-                        break;
+                    break;
                 }
             }
+
+            LIBQUEUE_GetSizeLeft(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &nbItemLeftQueue_u8);
+            
+            if(nbItemLeftQueue_u8 < nbMsgToTreat_u8)
+            {
+                ASSERT((t_uint16)nbItemLeftQueue_u8);
+                //---- put a maximum of element ----//
+                nbMsgToTreat_u8 = nbItemLeftQueue_u8;
+            }
+            for(LLI_u8 = (t_uint8)0; 
+            (LLI_u8 < nbMsgToTreat_u8) 
+             && (Ret_e == RC_OK) ; 
+            LLI_u8++)
+            {
+                //--- may be reset rxItemBuffer container to 0 here ----//
+                //---------Get a msg from Hardware Buffer---------//
+                Ret_e = s_FMKFDCAN_RetrieveRxItem(  idxNode_u8, 
+                                                    bspRxFifo_32,
+                                                    &RxItemBuffer_s.bspRxItem_s,
+                                                    RxItemBuffer_s.data_ua8);
+                //---------Copy into buffer only if DataLenght <= 8---------//
+                if(Ret_e == RC_OK)
+                {
+                    //--- WARNING maybe not good to stop fast task isr -----//
+                    g_NodeInfo_as[idxNode_u8].Flag_s.readOpe_b = (t_bool)TRUE;
+                    Ret_e = LIBQUEUE_WriteElement(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &RxItemBuffer_s, sizeof(RxItemBuffer_s));
+                    g_NodeInfo_as[idxNode_u8].Flag_s.readOpe_b = (t_bool)FALSE;
+                    if(Ret_e != RC_OK)
+                    {
+                        ASSERT((t_uint16)Ret_e);
+                    }
+                }
+            }
+            //---------Flag RxFrame Pending ---------//
+            g_NodeInfo_as[idxNode_u8].Flag_s.RxQueuePending_b = (t_bool)True;
         }
     }
+
+    return;
 }
 
 /*****************************
 * s_FMKFDCAN_RetrieveRxItem
 ******************************/
 static t_eReturnCode s_FMKFDCAN_RetrieveRxItem(t_eFMKFDCAN_NodeList f_Node_e,
-                                                  t_eFMKFDCAN_HwRxFifoList f_RxFifo_e,
+                                                  t_uint32 f_BspRxFifo_u32,
                                                   FDCAN_RxHeaderTypeDef * f_bspRxItem_ps,
                                                   t_uint8 * f_bspData_pu8)
 {
     t_eReturnCode Ret_e = RC_OK;
     HAL_StatusTypeDef bspRet_e = HAL_OK;
-    t_uint32 bspRxFifo_u32;
 
-    Ret_e = s_FMKFDCAN_GetBspRxFifoId(f_RxFifo_e, &bspRxFifo_u32);
-    if(Ret_e == RC_OK)
+    //--------- Get Rx Msg From Hardware Fifo---------//
+    bspRet_e = HAL_FDCAN_GetRxMessage(&g_NodeInfo_as[f_Node_e].bspNode_s, 
+                            f_BspRxFifo_u32,
+                            f_bspRxItem_ps,
+                            f_bspData_pu8);
+
+    if(bspRet_e != HAL_OK)
     {
-        //--------- Get Rx Msg From Hardware Fifo---------//
-        bspRet_e = HAL_FDCAN_GetRxMessage(&g_NodeInfo_as[f_Node_e].bspNode_s, 
-                                bspRxFifo_u32,
-                                f_bspRxItem_ps,
-                                f_bspData_pu8);
-
-        if(bspRet_e != HAL_OK)
-        {
-            Ret_e = RC_ERROR_WRONG_RESULT;
-        }
+        Ret_e = RC_ERROR_WRONG_RESULT;
     }
+    
     return Ret_e;
 }
 /*****************************
@@ -1683,14 +1660,15 @@ static t_eReturnCode s_FMKFDCAN_CopyBspTxItem(t_sFMKFDCAN_TxItemCfg *f_TxItemCfg
 * s_FMKFDCAN_GetUserRegisterIndex
 *********************************/
 static t_eReturnCode s_FMKFDCAN_GetUserRegisterIndex(t_uint32 f_Identifier_u32,
-                                                     t_sFMKFDCAN_UserItemRegister * f_NodeRegister_pas,
+                                                     t_sFMKFDCAN_UserItemSub * f_nodeSubs_pas,
                                                      t_uint8 f_RegistrationCtr_u8,
                                                      t_uint8 * f_idxUserRegister_pu8)
 {
     t_eReturnCode Ret_e = RC_OK;
     t_uint8 idxUserRgstr_u8;
+    t_sFMKFDCAN_UserItemSub * subInfo_ps;
 
-    if(f_NodeRegister_pas == (t_sFMKFDCAN_UserItemRegister *)NULL)
+    if(f_nodeSubs_pas == (t_sFMKFDCAN_UserItemSub *)NULL)
     {
         Ret_e = RC_ERROR_PTR_NULL;
     }
@@ -1708,8 +1686,10 @@ static t_eReturnCode s_FMKFDCAN_GetUserRegisterIndex(t_uint32 f_Identifier_u32,
         // Works -> We enter in condition
         for(idxUserRgstr_u8 = (t_uint8)0; idxUserRgstr_u8 < f_RegistrationCtr_u8 ; idxUserRgstr_u8++)
         {
-            if ((f_Identifier_u32 & f_NodeRegister_pas[idxUserRgstr_u8].maskId_u32) == 
-                (f_NodeRegister_pas[idxUserRgstr_u8].itemId_s.Identifier_u32 & f_NodeRegister_pas[idxUserRgstr_u8].maskId_u32)
+            subInfo_ps = (t_sFMKFDCAN_UserItemSub *)(&f_nodeSubs_pas[idxUserRgstr_u8]);
+
+            if ((f_Identifier_u32 & subInfo_ps->maskId_u32) == 
+                (subInfo_ps->itemId_s.Identifier_u32 & subInfo_ps->maskId_u32)
                 )
             {
                 break;
@@ -1742,9 +1722,9 @@ static t_eReturnCode s_FMKFDCAN_SetNodeFilters(void)
     #warning('Filter are for Standard ID, please change following line if Node is use in Extended Mode, Think to also changed bspInit FilerNb')
     bspFilter_s.IdType = FDCAN_STANDARD_ID;
     bspFilter_s.FilterIndex = 0;                 // Index du filtre
-    bspFilter_s.FilterType = FDCAN_FILTER_RANGE;  // Type de filtre
+    bspFilter_s.FilterType = FDCAN_FILTER_MASK;  // Type de filtre
     bspFilter_s.FilterID1 = 0x000;               // ID accepté
-    bspFilter_s.FilterID2 = 0x7FF;               // Masque (toutes les trames)
+    bspFilter_s.FilterID2 = 0x000;               // Masque (toutes les trames)
 
     for( idxNode_u8 = (t_uint8)0 ; (idxNode_u8 < FMKFDCAN_NODE_NB) && (Ret_e == RC_OK) ; idxNode_u8++)
     {
@@ -1887,6 +1867,204 @@ static t_eReturnCode s_FMKFDCAN_SetHwFifoOpeMode(t_eFMKFDCAN_NodeList f_Node_e ,
             }
         }
     }
+    return Ret_e;
+}
+
+/*****************************
+* s_FMKFDCAN_GetBspFramePurpose
+******************************/
+static void s_FMKFDCAN_FastTask(void)
+{
+    t_eReturnCode Ret_e;
+    t_uint8 idxNode_u8;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
+
+    //---- loop on every node ----//
+    for(idxNode_u8 = (t_uint8)0 ; idxNode_u8 < FMKFDCAN_NODE_NB ; idxNode_u8++)
+    {
+        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[idxNode_u8]);
+
+        if(nodeInfo_ps->isNodeActive_b == (t_bool)TRUE)
+        {
+            if((nodeInfo_ps->Flag_s.TxQueuePending_b == (t_bool)TRUE)
+            || (nodeInfo_ps->Flag_s.TxFramePrioPending_b == (t_bool)TRUE))
+            {
+                //--- maybe deactivate Tx Callback while performing on queue 
+                //      we not doing anything on it so for now do nothing -----//
+                Ret_e = s_FMKFDCAN_FastTask_TxFifoMngmt((t_eFMKFDCAN_NodeList)idxNode_u8);
+
+                if(Ret_e < RC_OK)
+                {
+                    ASSERT((t_uint16)Ret_e);
+                }
+            }
+            if(nodeInfo_ps->Flag_s.RxQueuePending_b == (t_bool)TRUE)
+            {
+                //---- deactivate Rx Callback fifo 1, 2 to operate on  queue and not be disturb ----//
+                (void)s_FMKFDCAN_SetHwBspCallbackStatus((t_eFMKFDCAN_NodeList)idxNode_u8,
+                                                        FMKFDCAN_BSP_RX_CB_FIFO_0,
+                                                        FMKFDCAN_CALLBACK_STATUS_DEACTIVATE);
+                (void)s_FMKFDCAN_SetHwBspCallbackStatus((t_eFMKFDCAN_NodeList)idxNode_u8,
+                                                        FMKFDCAN_BSP_RX_CB_FIFO_1,
+                                                        FMKFDCAN_CALLBACK_STATUS_DEACTIVATE);
+                Ret_e = s_FMKFDCAN_FastTask_RxFifoMngmt((t_eFMKFDCAN_NodeList)idxNode_u8);
+                //---- Reactivate Rx Callback fifo 1, 2 to get new Message ----//
+                (void)s_FMKFDCAN_SetHwBspCallbackStatus((t_eFMKFDCAN_NodeList)idxNode_u8,
+                                                        FMKFDCAN_BSP_RX_CB_FIFO_0,
+                                                        FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+                (void)s_FMKFDCAN_SetHwBspCallbackStatus((t_eFMKFDCAN_NodeList)idxNode_u8,
+                                                        FMKFDCAN_BSP_RX_CB_FIFO_1,
+                                                        FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+                if(Ret_e < RC_OK)
+                {
+                    ASSERT((t_uint16)Ret_e);
+                }
+            }
+        }
+    }
+
+    return;
+}
+
+/*********************************
+* s_FMKFDCAN_FastTask_TxFifoMngmt
+**********************************/
+static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e)
+{
+    t_eReturnCode Ret_e;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
+    t_sFMKFDCAN_TxItemBuffer SoftTxItem_s;
+    HAL_StatusTypeDef bspRet_e;
+    t_uint8 TxQueueSize_u8 = (t_uint8)0;
+    t_uint8 msgProcessed_u8 = (t_uint8)0;
+    t_uint32 bspFifoLvl_u32 = (t_uint32)0;
+
+    if(f_node_e >= FMKFDCAN_NODE_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else
+    {
+        Ret_e = RC_OK;
+        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_node_e]);
+
+        LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u8);
+
+        //---------Process messages from the queue, respecting the maximum limit per interrupt---------//                        
+        while ((TxQueueSize_u8  > (t_uint8)0) 
+            && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT)
+            && (Ret_e == RC_OK))
+        {
+            bspFifoLvl_u32 = HAL_FDCAN_GetTxFifoFreeLevel(&nodeInfo_ps->bspNode_s);
+
+            if(bspFifoLvl_u32 == (t_uint32)0)
+            {
+                break;
+            }
+            else
+            {
+                //---------Read an element from the queue---------//
+                Ret_e = LIBQUEUE_ReadElement(&nodeInfo_ps->TxSoftQueue_s, &SoftTxItem_s, sizeof(SoftTxItem_s));
+                if (Ret_e != RC_OK)
+                {
+                    //---------Exit loop on read failure---------//
+                    ASSERT((t_uint16)Ret_e);
+                    break;
+                }
+
+                //---------Attempt to send the message to the hardware buffer---------//
+                bspRet_e = HAL_FDCAN_AddMessageToTxFifoQ(&nodeInfo_ps->bspNode_s,
+                                                        &SoftTxItem_s.bspTxItem_s,
+                                                        SoftTxItem_s.data_ua8);
+                if (bspRet_e != HAL_OK)
+                {
+                    Ret_e = RC_ERROR_WRONG_RESULT;
+                    break;
+                }
+
+                //---------Increment processed message count---------//
+                msgProcessed_u8++;
+                //---------Update the queue size---------//
+                LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u8);
+            }
+        }
+
+        //---------If the queue is empty, update the flag---------//
+        if (TxQueueSize_u8 == 0)
+        {                                                    
+            nodeInfo_ps->Flag_s.TxQueuePending_b = (t_bool)False;
+        }
+    }
+
+    return Ret_e;
+}
+
+/**********************************
+* s_FMKFDCAN_FastTask_TxFifoMngmt
+***********************************/
+static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e)
+{
+    t_eReturnCode Ret_e;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
+    t_sFMKFDCAN_RxItemBuffer SoftRxItem_s;
+    t_sFMKFDCAN_RxItemEvent rxItemEvnt_s;
+    t_uint8 idxSubscription_u8 = (t_uint8)0;
+    t_uint8 RxQueueSize_u8 = (t_uint8)0;
+    t_uint8 msgProcessed_u8 = (t_uint8)0;
+
+    if(f_node_e >= FMKFDCAN_NODE_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else
+    {
+        Ret_e = RC_OK;
+        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_node_e]);
+        LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u8);
+
+        while ((RxQueueSize_u8  > (t_uint8)0) 
+            && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT)
+            && (Ret_e == RC_OK))
+        {
+            //---- get on element from the queue ----//
+            Ret_e = LIBQUEUE_ReadElement(   &nodeInfo_ps->RxSoftQueue_s,
+                                            &SoftRxItem_s,
+                                            sizeof(t_sFMKFDCAN_RxItemBuffer));
+                
+            if(Ret_e == RC_OK)
+            {
+                Ret_e = s_FMKFDCAN_CopyBspRxItem(&SoftRxItem_s.bspRxItem_s, 
+                                                &rxItemEvnt_s,
+                                                SoftRxItem_s.data_ua8);
+            }
+            if(Ret_e == RC_OK)
+            {
+                //---------Find in Registration the Registerindex of the ItemId---------//
+                Ret_e = s_FMKFDCAN_GetUserRegisterIndex(SoftRxItem_s.bspRxItem_s.Identifier,
+                                                        nodeInfo_ps->userSubInfo_pas,
+                                                        nodeInfo_ps->nbSubscriptions_u8,
+                                                        &idxSubscription_u8);
+            }
+            if(Ret_e == RC_OK)
+            {
+                //--------- Call Callback User with RxItem---------//
+                nodeInfo_ps->userSubInfo_pas[idxSubscription_u8].rcvItem_cb(f_node_e, 
+                                                                            rxItemEvnt_s, 
+                                                                            nodeInfo_ps->nodeHealth_e);
+            }
+
+            //---- update Rx Queue size ----//
+            msgProcessed_u8++;
+            nodeInfo_ps->rxMsgDiag_s.rxMsgProcess_u32++;
+            //---------Update the queue size---------//
+            LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u8);
+        }
+        if(RxQueueSize_u8 == (t_uint8)0)
+        {
+            nodeInfo_ps->Flag_s.RxQueuePending_b = (t_bool)FALSE;
+        }
+    }
+
     return Ret_e;
 }
 
@@ -2161,25 +2339,25 @@ static t_eReturnCode s_FMKFDCAN_GetBspCallbackId(t_eFMKFDCAN_BspCallbackList f_C
         switch(f_Callback_e)
         {
             case FMKFDCAN_BSP_TX_CB_EVENT: 
-                *f_bspCallback_u32 =FDCAN_IT_LIST_TX_FIFO_ERROR;
+                *f_bspCallback_u32 = FDCAN_IT_LIST_TX_FIFO_ERROR;
                 break;
             case FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE:
-                *f_bspCallback_u32 =FDCAN_IT_TX_COMPLETE;
+                *f_bspCallback_u32 = FDCAN_IT_TX_COMPLETE;
                 break;
             case FMKFDCAN_BSP_TX_CB_BUFFER_ABORT:
-                *f_bspCallback_u32 =FDCAN_IT_TX_ABORT_COMPLETE;
+                *f_bspCallback_u32 = FDCAN_IT_TX_ABORT_COMPLETE;
                 break;
             case FMKFDCAN_BSP_TX_CB_FIFO_EMPTY:
-                *f_bspCallback_u32 =FDCAN_IT_TX_FIFO_EMPTY;
+                *f_bspCallback_u32 = FDCAN_IT_TX_FIFO_EMPTY;
                 break;
             case FMKFDCAN_BSP_RX_CB_FIFO_0:
-                *f_bspCallback_u32 =FDCAN_IT_LIST_RX_FIFO0;
+                *f_bspCallback_u32 = FDCAN_IT_LIST_RX_FIFO0;
                 break;
             case FMKFDCAN_BSP_RX_CB_FIFO_1:
-                *f_bspCallback_u32 =FDCAN_IT_LIST_RX_FIFO1;
+                *f_bspCallback_u32 = FDCAN_IT_LIST_RX_FIFO1;
                 break;
             case FMKFDCAN_BSP_CB_PROTOCOL_ERR:
-                *f_bspCallback_u32 =FDCAN_IT_LIST_PROTOCOL_ERROR;
+                *f_bspCallback_u32 = FDCAN_IT_LIST_PROTOCOL_ERROR;
                 break;
             case FMKFDCAN_BSP_CB_NB:
             default:
@@ -2483,7 +2661,7 @@ void HAL_FDCAN_TxBufferAbortCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t Buffe
 **********************************/
 void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 {
-    s_FMKFDCAN_BspRxEventCb(hfdcan, RxFifo1ITs, FMKFDCAN_BSP_RX_CB_FIFO_0);
+    s_FMKFDCAN_BspRxEventCb(hfdcan, RxFifo1ITs, FMKFDCAN_BSP_RX_CB_FIFO_1);
 }
 /**********************************
 * HAL_FDCAN_RxFifo0Callback
@@ -2524,5 +2702,3 @@ void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorSt
  *
  *
  */
-
-
