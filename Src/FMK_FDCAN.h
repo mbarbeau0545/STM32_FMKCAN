@@ -253,19 +253,6 @@ typedef struct
     */
     t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItemCfg f_TxItemCfg_s);
     /**
-    *	@brief      Not Implemented Yet
-    *	@note
-    *
-    *
-    *	@param[in] 
-    *	@param[in]
-    *	 
-    *
-    *
-    */
-    t_eReturnCode FMKFDCAN_GetRxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_RxItemEvent *f_RxItem_ps);
-
-    /**
     *
     *	@brief      DO NOT USE, Function to get the Handle Type def for IRQN_Handler Function
     *

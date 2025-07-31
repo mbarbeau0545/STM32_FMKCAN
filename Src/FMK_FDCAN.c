@@ -102,7 +102,7 @@ typedef struct
     t_uint32 rxMsgReceived_u32;      /**< Number of msg actually received  */
     t_uint32 rxMsgProcess_u32;      /**< Number of msg process */
     t_uint32 rxMsgDropped_u32;      /**< Number of message lost */
-    t_uint32 rxOverflow_u32         /**< Number of rx Fifo overflow */
+    t_uint32 rxOverflow_u32;        /**< Number of rx Fifo overflow */
 } t_sFMKFDCAN_RxMSgDiag;
 /**
  * @brief Node information structure for FDCAN configuration and status.
@@ -124,24 +124,6 @@ typedef struct __t_sFMKFDCAN_NodeInfo
     t_eFMKFDCAN_NodeStatus nodeHealth_e;                    /**< Node status */
 } t_sFMKFDCAN_NodeInfo;
 
-/**
- * @brief Rx item buffer structure for receiving FDCAN frames.
- */
-typedef struct __t_sFMKFDCAN_RxItemBuffer
-{
-    FDCAN_RxHeaderTypeDef bspRxItem_s; /**< FDCAN BSP Rx header structure for frame details. */
-    t_uint8 data_ua8[FMKFDCAN_RX_DATA_SIZE];  /**< Data buffer for the received frame. */
-} t_sFMKFDCAN_RxItemBuffer;
-
-/**
- * @brief Tx item buffer structure for transmitting FDCAN frames.
- */
-typedef struct 
-{
-    FDCAN_TxHeaderTypeDef bspTxItem_s; /**< FDCAN BSP Tx header structure for frame details. */
-    t_uint8 data_ua8[FMKFDCAN_TX_DATA_SIZE];  /**< Data buffer for the frame to transmit. */
-} t_sFMKFDCAN_TxItemBuffer;
-
 
 
 /* CAUTION : Automatic generated code section : Start */
@@ -159,12 +141,6 @@ typedef struct
 static t_eCyclicModState g_FmkCan_ModState_e = STATE_CYCLIC_CFG;
 /* Store information about node*/
 t_sFMKFDCAN_NodeInfo g_NodeInfo_as[FMKFDCAN_NODE_NB];
-/*------------------------Tx FIFO MANAGEMENT-------------------------------*/
-/**< Transmission software Buffer*/
-t_sFMKFDCAN_TxItemBuffer g_TxSoftBuffer_as[FMKFDCAN_NODE_NB][FMKFDCAN_TX_SOFT_BUFF_SIZE];
-/**< Transmission Queue management*/
-/*------------------------WITH CALLBACK (EVENT) MANAGMENT-------------------------------*/
-t_sFMKFDCAN_RxItemBuffer g_RxBufferEvnt_as[FMKFDCAN_NODE_NB][FMKFDCAN_RX_SOFT_BUFF_SIZE];
 
 /**< User Item Registration Managment */
 t_sFMKFDCAN_UserItemSub g_UserRegisterEvnt_as[FMKFDCAN_NODE_NB][FMKFDCAN_RX_NUM_REGISTRATION_EVNT];
@@ -342,10 +318,8 @@ static t_eReturnCode s_FMKFDCAN_CopyBspRxItem(FDCAN_RxHeaderTypeDef *f_bspRxItem
  *  @retval RC_ERROR_LIMIT_REACHED            @ref RC_ERROR_LIMIT_REACHED
  *
  */
-static t_eReturnCode s_FMKFDCAN_GetUserRegisterIndex(t_uint32 f_Identifier_u32,
-                                                     t_sFMKFDCAN_UserItemSub * f_nodeSubs_pas,
-                                                     t_uint8 f_RegistrationCtr_u8,
-                                                     t_uint8 * f_idxUserRegister_pu8);
+static t_eReturnCode s_FMKFDCAN_UserCallbackMngmt(  t_eFMKFDCAN_NodeList f_Node_e,
+                                                    t_sFMKFDCAN_RxItemEvent * f_RxItemEvnt_ps);
 
 /**
  *	@brief      Configure the Global Filter for All Node And FIFO
@@ -593,17 +567,8 @@ t_eReturnCode FMKFDCAN_Init(void)
     t_uint8 idxNode_u8 = (t_uint8)0;
     t_uint8 LLI_u8 = (t_uint8)0;
 
-    t_sLIBQUEUE_QueueCfg TxBufferCfg_s = {
-        .bufferSize_u8 = FMKFDCAN_TX_SOFT_BUFF_SIZE,
-        .elementSize_u8 = sizeof(t_sFMKFDCAN_TxItemBuffer),
-        .enableOverwrite_b = False,
-    };
-    t_sLIBQUEUE_QueueCfg RxBufferCfg_s = {
-        .bufferSize_u8 = FMKFDCAN_RX_SOFT_BUFF_SIZE,
-        .elementSize_u8 = sizeof(t_sFMKFDCAN_RxItemBuffer),
-        .enableOverwrite_b = False,
-    };
-
+    t_sLIBQUEUE_QueueCfg TxBufferCfg_s;
+    t_sLIBQUEUE_QueueCfg RxBufferCfg_s;
     //-----------------For Every Node in FDCAN----------------//
     for (idxNode_u8 = (t_uint8)0 ; (idxNode_u8 < FMKFDCAN_NODE_NB) && (Ret_e == RC_OK) ; idxNode_u8++)
     {   
@@ -634,32 +599,6 @@ t_eReturnCode FMKFDCAN_Init(void)
         {
             g_BspCbMngmt_ae[idxNode_u8][idxBspCallback_u8] = FMKFDCAN_CALLBACK_STATUS_DEACTIVATE;
         }
-        //-------------------Init Tx, Rx Software Queue ----------------//
-        for(LLI_u8 = (t_uint8)0 ; LLI_u8 < FMKFDCAN_RX_SOFT_BUFF_SIZE ; LLI_u8++)
-        {// Rx buffer
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.BitRateSwitch = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.DataLength = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.ErrorStateIndicator = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.FDFormat = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.Identifier = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.IdType = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.IsFilterMatchingFrame = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.RxFrameType = (t_uint32)0;
-            g_RxBufferEvnt_as[idxNode_u8][LLI_u8].bspRxItem_s.RxTimestamp = (t_uint32)0;
-        }
-
-        for(LLI_u8 = (t_uint8)0 ; LLI_u8 < FMKFDCAN_TX_SOFT_BUFF_SIZE ; LLI_u8++)
-        {// TxBuffer
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.BitRateSwitch = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.DataLength = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.ErrorStateIndicator = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.FDFormat = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.Identifier = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.IdType = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.MessageMarker = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.TxEventFifoControl = (t_uint32)0;
-            g_TxSoftBuffer_as[idxNode_u8][LLI_u8].bspTxItem_s.TxFrameType = (t_uint32)0;
-        }
 
         //-------------------Initialize RxItem Registration ----------------//
         for(LLI_u8 = (t_uint8)0 ; LLI_u8 < (t_uint8)FMKFDCAN_RX_NUM_REGISTRATION_EVNT ; LLI_u8++)
@@ -671,14 +610,36 @@ t_eReturnCode FMKFDCAN_Init(void)
             g_UserRegisterEvnt_as[idxNode_u8][LLI_u8].rcvItem_cb = (t_cbFMKFDCAN_RcvItem *)NULL_FUNCTION;
         }
         //-------------------Configure the Rx, Tx Queue----------------//
-        RxBufferCfg_s.bufferHead_pv = g_RxBufferEvnt_as[idxNode_u8];
         // Configure Rx Buffer Queue
+        RxBufferCfg_s.bufferHead_pv = c_FmkFdcan_NodeCfg_as[idxNode_u8].rxBufferStartAddress_pas;
+        RxBufferCfg_s.bufferSize_u8 = c_FmkFdcan_NodeCfg_as[idxNode_u8].rxBufferSize_u16,
+        RxBufferCfg_s.elementSize_u8 = sizeof(t_sFMKFDCAN_RxItemBuffer),
+        RxBufferCfg_s.enableOverwrite_b = False,
+
         Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, RxBufferCfg_s);
+
+        if((Ret_e == RC_ERROR_PARAM_INVALID)
+        && (RxBufferCfg_s.bufferSize_u8 == (t_uint8)0))
+        {
+            //---- normal 'cause node is not beeing used ----//
+            Ret_e = RC_OK;
+        }
+
         // Configure Tx Buffer Queue
         if(Ret_e == RC_OK)
         {
-            TxBufferCfg_s.bufferHead_pv = g_TxSoftBuffer_as[idxNode_u8];
+            TxBufferCfg_s.bufferHead_pv = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferStartAddress_pas;
+            TxBufferCfg_s.bufferSize_u8 = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferSize_u16,
+            TxBufferCfg_s.elementSize_u8 = sizeof(t_sFMKFDCAN_TxItemBuffer),
+            TxBufferCfg_s.enableOverwrite_b = False,
+
             Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].TxSoftQueue_s, TxBufferCfg_s);
+            if((Ret_e == RC_ERROR_PARAM_INVALID)
+            && (TxBufferCfg_s.bufferSize_u8 == (t_uint8)0))
+            {
+                //---- normal 'cause node is not beeing used ----//
+                Ret_e = RC_OK;
+            }
         }
     }
     
@@ -858,7 +819,7 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
             {
                 //----------copy structure into SoTxitem_s----------//
                 //-----Copy data Into Software Buffer Structre-----//
-                Ret_e = SafeMem_memcpy( &SoTxitem_s.data_ua8, 
+                Ret_e = SafeMem_memcpy( SoTxitem_s.data_ua8, 
                                         f_TxItemCfg_s.CanMsg_s.data_pu8,
                                         (t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
                 if(Ret_e == RC_OK)
@@ -878,97 +839,6 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
         
     }
     return Ret_e;
-}
-
-/*********************************
-* FMKFDCAN_GetRxItem
-*********************************/
-t_eReturnCode FMKFDCAN_GetRxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_RxItemEvent *f_RxItem_ps)
-{
-    t_eReturnCode Ret_e = RC_OK;
-    //t_uint8 LLI_u8;
-    //t_sFMKFDCAN_RxItemBuffer *itemBuff_ps;
-    t_uint8 fifoLevel_u8 = (t_uint8)0;
-    t_uint8 idxData_u8 = (t_uint8)0;
-    t_eFMKFDCAN_DataLength dataLenght_e;
-    t_uint32 FIFO_Id_u32 = (t_uint32)0;
-    FDCAN_RxHeaderTypeDef bspRxITem_s;
-    t_uint8 data_pu8[FMKFDCAN_64_BYTES];
-    HAL_StatusTypeDef bspRet_e = HAL_OK;
-
-    if(f_RxItem_ps == (t_sFMKFDCAN_RxItemEvent * )NULL)
-    {
-        Ret_e = RC_ERROR_PTR_NULL;
-    }
-    if(g_FmkCan_ModState_e != STATE_CYCLIC_OPE)
-    {
-        Ret_e = RC_WARNING_BUSY;
-    }
-    if((g_NodeInfo_as[f_Node_e].isNodeConfigured_b == (t_bool)False)
-    || g_NodeInfo_as[f_Node_e].isNodeActive_b == (t_bool)False)
-    {
-        Ret_e = RC_ERROR_WRONG_STATE;
-    }
-    if(Ret_e == RC_OK)
-    {
-        #warning('FMKFDCAN_GetRxItem No Callback Not Implemented')
-        fifoLevel_u8 = HAL_FDCAN_GetRxFifoFillLevel(&g_NodeInfo_as[f_Node_e].bspNode_s, FDCAN_RX_FIFO0);
-        FIFO_Id_u32 = FDCAN_RX_FIFO0;
-        if(fifoLevel_u8 == 0)
-        {
-            fifoLevel_u8 = HAL_FDCAN_GetRxFifoFillLevel(&g_NodeInfo_as[f_Node_e].bspNode_s, FDCAN_RX_FIFO1);
-            FIFO_Id_u32 = FDCAN_RX_FIFO1;
-        }
-        if(fifoLevel_u8 != 0)
-        {
-            bspRet_e = HAL_FDCAN_GetRxMessage(&g_NodeInfo_as[f_Node_e].bspNode_s, 
-                                    FIFO_Id_u32, 
-                                    &bspRxITem_s,
-                                    data_pu8);
-
-            if(bspRet_e == HAL_OK)
-            {
-                //---------- Get the number of data ----------//
-                Ret_e = s_FMKFDCAN_GetDlcFromBsp(bspRxITem_s.DataLength, &dataLenght_e);
-            
-                if(Ret_e == RC_OK)
-                {
-                    for(idxData_u8 = (t_uint8)0; idxData_u8 < (t_uint8)dataLenght_e ; idxData_u8++)
-                    {
-                        f_RxItem_ps->CanMsg_s.data_pu8[idxData_u8] = data_pu8[idxData_u8];
-                    }
-                    f_RxItem_ps->CanMsg_s.Direction_e = FMKFDCAN_NODE_DIRECTION_RX;
-                    f_RxItem_ps->CanMsg_s.Dlc_e = dataLenght_e;
-                    f_RxItem_ps->ItemId_s.Identifier_u32 = bspRxITem_s.Identifier;
-
-                    if (bspRxITem_s.IdType == FDCAN_STANDARD_ID)
-                    {
-                        f_RxItem_ps->ItemId_s.IdType_e = FMKFDCAN_IDTYPE_STANDARD;
-                    }
-                    else 
-                    {
-                        f_RxItem_ps->ItemId_s.IdType_e = FMKFDCAN_IDTYPE_EXTENDED;
-                    }
-                    
-                }
-            }
-            else 
-            {
-                Ret_e = RC_WARNING_WRONG_RESULT;
-            }
-        }
-        if(Ret_e != RC_OK)
-        {
-            //---------- Get Default Data values ----------//
-
-            f_RxItem_ps->CanMsg_s.data_pu8 = (t_uint8 *)NULL;
-            f_RxItem_ps->CanMsg_s.Direction_e = FMKFDCAN_NODE_DIRECTION_RX;
-            f_RxItem_ps->CanMsg_s.Dlc_e = 0;
-            f_RxItem_ps->ItemId_s.Identifier_u32 = 0;
-        }
-    }
-    return Ret_e;
-
 }
 
 /***********************
@@ -1657,23 +1527,25 @@ static t_eReturnCode s_FMKFDCAN_CopyBspTxItem(t_sFMKFDCAN_TxItemCfg *f_TxItemCfg
 }
 
 /*********************************
-* s_FMKFDCAN_GetUserRegisterIndex
+* s_FMKFDCAN_UserCallbackMngmt
 *********************************/
-static t_eReturnCode s_FMKFDCAN_GetUserRegisterIndex(t_uint32 f_Identifier_u32,
-                                                     t_sFMKFDCAN_UserItemSub * f_nodeSubs_pas,
-                                                     t_uint8 f_RegistrationCtr_u8,
-                                                     t_uint8 * f_idxUserRegister_pu8)
+static t_eReturnCode s_FMKFDCAN_UserCallbackMngmt(  t_eFMKFDCAN_NodeList f_Node_e,
+                                                    t_sFMKFDCAN_RxItemEvent * f_RxItemEvnt_ps)
 {
     t_eReturnCode Ret_e = RC_OK;
     t_uint8 idxUserRgstr_u8;
     t_sFMKFDCAN_UserItemSub * subInfo_ps;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
 
-    if(f_nodeSubs_pas == (t_sFMKFDCAN_UserItemSub *)NULL)
+    if((f_Node_e >=  FMKFDCAN_NODE_NB)
+    || (f_RxItemEvnt_ps == (t_sFMKFDCAN_RxItemEvent *)NULL))
     {
-        Ret_e = RC_ERROR_PTR_NULL;
+        ASSERT((t_uint16)0);
+        Ret_e = RC_ERROR_PARAM_INVALID;
     }
     if(Ret_e == RC_OK)
     {
+        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_Node_e]);
         //-------------------Find User Information-------------------//
         // Loop until the number of registration done 
         // We enter in the condition if the mask applied to f_Identifier_u32
@@ -1684,25 +1556,18 @@ static t_eReturnCode s_FMKFDCAN_GetUserRegisterIndex(t_uint32 f_Identifier_u32,
         // 0b11010100       & 0b11110000 = 0b11010000
         // 0b11010011       & 0b11110000 = 0b11010000 
         // Works -> We enter in condition
-        for(idxUserRgstr_u8 = (t_uint8)0; idxUserRgstr_u8 < f_RegistrationCtr_u8 ; idxUserRgstr_u8++)
+        for(idxUserRgstr_u8 = (t_uint8)0; idxUserRgstr_u8 < nodeInfo_ps->nbSubscriptions_u8 ; idxUserRgstr_u8++)
         {
-            subInfo_ps = (t_sFMKFDCAN_UserItemSub *)(&f_nodeSubs_pas[idxUserRgstr_u8]);
+            subInfo_ps = (t_sFMKFDCAN_UserItemSub *)(&nodeInfo_ps->userSubInfo_pas[idxUserRgstr_u8]);
 
-            if ((f_Identifier_u32 & subInfo_ps->maskId_u32) == 
+            if ((f_RxItemEvnt_ps->ItemId_s.Identifier_u32 & subInfo_ps->maskId_u32) == 
                 (subInfo_ps->itemId_s.Identifier_u32 & subInfo_ps->maskId_u32)
                 )
             {
-                break;
+                nodeInfo_ps->userSubInfo_pas[idxUserRgstr_u8].rcvItem_cb(   f_Node_e, 
+                                                                            *f_RxItemEvnt_ps, 
+                                                                            nodeInfo_ps->nodeHealth_e);
             }
-        }
-        if(idxUserRgstr_u8 == f_RegistrationCtr_u8)
-        {
-            Ret_e = RC_ERROR_LIMIT_REACHED;
-            *f_idxUserRegister_pu8 = (t_uint8)0;
-        }
-        else 
-        {
-            *f_idxUserRegister_pu8 = idxUserRgstr_u8;
         }
     }
 
@@ -1719,8 +1584,8 @@ static t_eReturnCode s_FMKFDCAN_SetNodeFilters(void)
     t_uint8 idxNode_u8;
     HAL_StatusTypeDef bspRet_e = HAL_OK;
 
-    #warning('Filter are for Standard ID, please change following line if Node is use in Extended Mode, Think to also changed bspInit FilerNb')
-    bspFilter_s.IdType = FDCAN_STANDARD_ID;
+    #warning('Filter are for Extended ID, please change following line if Node is use in Extended Mode, Think to also changed bspInit FilerNb')
+    bspFilter_s.IdType = FDCAN_EXTENDED_ID;
     bspFilter_s.FilterIndex = 0;                 // Index du filtre
     bspFilter_s.FilterType = FDCAN_FILTER_MASK;  // Type de filtre
     bspFilter_s.FilterID1 = 0x000;               // ID accepté
@@ -2040,22 +1905,25 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
             if(Ret_e == RC_OK)
             {
                 //---------Find in Registration the Registerindex of the ItemId---------//
-                Ret_e = s_FMKFDCAN_GetUserRegisterIndex(SoftRxItem_s.bspRxItem_s.Identifier,
-                                                        nodeInfo_ps->userSubInfo_pas,
-                                                        nodeInfo_ps->nbSubscriptions_u8,
-                                                        &idxSubscription_u8);
+                Ret_e = s_FMKFDCAN_UserCallbackMngmt(   f_node_e,
+                                                        &rxItemEvnt_s);
             }
             if(Ret_e == RC_OK)
             {
                 //--------- Call Callback User with RxItem---------//
-                nodeInfo_ps->userSubInfo_pas[idxSubscription_u8].rcvItem_cb(f_node_e, 
-                                                                            rxItemEvnt_s, 
-                                                                            nodeInfo_ps->nodeHealth_e);
+                
+            }
+            if(Ret_e != RC_OK)
+            {
+                nodeInfo_ps->rxMsgDiag_s.rxMsgDropped_u32++;
+            }
+            else 
+            {
+                nodeInfo_ps->rxMsgDiag_s.rxMsgProcess_u32++;
             }
 
             //---- update Rx Queue size ----//
             msgProcessed_u8++;
-            nodeInfo_ps->rxMsgDiag_s.rxMsgProcess_u32++;
             //---------Update the queue size---------//
             LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u8);
         }
