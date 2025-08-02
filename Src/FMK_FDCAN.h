@@ -59,18 +59,31 @@ typedef enum
 /**
  * @brief Enumeration for FDCAN node statuses.
  */
-typedef enum 
+typedef enum
 {
-    FMKFDCAN_NODE_STATE_OK             = 0x00,     /**< Node is in a healthy state. */
-    FMKFDCAN_NODE_STATE_ERR_PARAM_INIT = 0x01,     /**< An error occured in the intialization*/
-    FMKFDCAN_NODE_STATE_ERR_FIFO       = 0x02,     /**< Node is queuing messages. */
-    FMKFDCAN_NODE_STATE_ERR_TIMEOUT    = 0x04,     /**< Timeout occured  on the Node */
-    FMKFDCAN_NODE_STATE_ERR_PROTOCOL   = 0x08,     /**< Protocol error detected in the node. */
-    FMKFDCAN_NODE_STATE_ERR_MEM        = 0x10,     /**< Memory error detected in the node. */
-    FMKFDCAN_NODE_STATE_ERR_WDG        = 0x20,     /**<  WhatchDog error detected*/
-
-    FMKFDCAN_NODE_STATE_NB                         /**< Total number of node statuses. */
+    FMKFDCAN_NODE_STATE_OK = 0x00,                 /**< Node is operating correctly, no errors detected. */
+    FMKFDCAN_NODE_STATE_ERR_HWRX_FIFO,             /**< Hardware error in Rx FIFO: received message could not be stored. */
+    FMKFDCAN_NODE_STATE_ERR_SWRX_FIFO,             /**< Software error in Rx FIFO: message could not be read or processed. */
+    FMKFDCAN_NODE_STATE_ERR_HWTX_FIFO,             /**< Hardware error in Tx FIFO: message could not be transmitted. */
+    FMKFDCAN_NODE_STATE_ERR_SWTX_FIFO,             /**< Software error in Tx FIFO: message could not be queued or managed. */
+    FMKFDCAN_NODE_STATE_NOT_READY,             /**< Node is not ready yet (e.g. initialization not completed). */
+    FMKFDCAN_NODE_STATE_NOT_STARTED,           /**< Node has not been properly started. */
+    FMKFDCAN_NODE_STATE_NOT_INIT,              /**< Node has not been properly Initialized. */
+    FMKFDCAN_NODE_STATE_NOT_SUPPORTED,         /**< Requested feature is not supported by this node. */
+    FMKFDCAN_NODE_STATE_PARAM,                 /**< Invalid parameter passed to a function. */
+    FMKFDCAN_NODE_STATE_PENDING,               /**< Operation is pending or not yet completed. */
+    FMKFDCAN_NODE_STATE_RAM_ACCESS,            /**< RAM access error (e.g. invalid address or corruption). */
+    FMKFDCAN_NODE_STATE_FIFO_EMPTY,            /**< Attempt to read from an empty FIFO. */
+    FMKFDCAN_NODE_STATE_FIFO_FULL,             /**< Attempt to write to a full FIFO. */
+    FMKFDCAN_NODE_STATE_LOG_OVERFLOW,          /**< Log buffer overflow due to excessive events or errors. */
+    FMKFDCAN_NODE_STATE_RAM_WDG,               /**< RAM watchdog triggered, likely due to blocking or slow access. */
+    FMKFDCAN_NODE_STATE_PROTOCOL_ARBT,         /**< Arbitration error on the CAN bus (e.g. lost arbitration). */
+    FMKFDCAN_NODE_STATE_PROTOCOL_DATA,         /**< Data protocol error (e.g. CRC failure, bit stuffing error). */
+    FMKFDCAN_NODE_STATE_RESERVED_AREA,         /**< Access to reserved memory or register area detected. */
+    FMKFDCAN_NODE_STATE_TIMEOUT,               /**< Operation timed out: no response or completion within the expected time. */
+    FMKFDCAN_NODE_STATE_NB                     /**< Total number of node states (for iteration or bounds checking). */
 } t_eFMKFDCAN_NodeStatus;
+
 
 /**
  * @brief Enumeration for FDCAN message directions.

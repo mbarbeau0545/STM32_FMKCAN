@@ -23,6 +23,7 @@
 #include "FMK_CFG/FMKCFG_ConfigFiles/FMKFDCAN_ConfigPrivate.h"
 #include "FMK_HAL/FMK_IO/Src/FMK_IO.h"
 #include "APP_CTRL/APP_SYS/Src/APP_SYS.h"
+#include "APP_CTRL/APP_SDM/Src/APP_SDM.h"
 
 #include "Library/QUEUE/Src/LIBQueue.h"
 #include "Library/SafeMem/SafeMem.h"
@@ -103,7 +104,7 @@ typedef struct
     t_uint32 rxMsgProcess_u32;      /**< Number of msg process */
     t_uint32 rxMsgDropped_u32;      /**< Number of message lost */
     t_uint32 rxOverflow_u32;        /**< Number of rx Fifo overflow */
-} t_sFMKFDCAN_RxMSgDiag;
+} t_sFMKFDCAN_RxMsgDiag;
 /**
  * @brief Node information structure for FDCAN configuration and status.
  */
@@ -113,7 +114,7 @@ typedef struct __t_sFMKFDCAN_NodeInfo
     t_sLIBQUEUE_QueueCore TxSoftQueue_s;                    /**< Transmission Queue management*/
     t_sLIBQUEUE_QueueCore RxSoftQueue_s;                    /**< Transmission Queue management*/
     t_sFMKFDCAN_UserItemSub * userSubInfo_pas;              /**< Pointor to user register information */
-    t_sFMKFDCAN_RxMSgDiag rxMsgDiag_s;
+    t_sFMKFDCAN_RxMsgDiag rxMsgDiag_s;
     t_uint8 nbSubscriptions_u8;                             /**< Number of subscription done for the node */
     t_eFMKCPU_ClockPort c_Clock_e;                          /**< Clock port associated with the FDCAN node. */
     t_eFMKCPU_IRQNType c_IrqnLine1_e;                       /**< IRQ line 1 associated with the FDCAN peripheral. */
@@ -122,6 +123,7 @@ typedef struct __t_sFMKFDCAN_NodeInfo
     t_bool isNodeConfigured_b;                              /**< Indicates if the FDCAN node has been configured. */
     t_bool isNodeActive_b;                                  /**< Indicates if the FDCAN node is active and operational. */
     t_eFMKFDCAN_NodeStatus nodeHealth_e;                    /**< Node status */
+    t_uint32 lastErrorCb_u32;                               /**< To know when the last time bsp call us with error */
 } t_sFMKFDCAN_NodeInfo;
 
 
@@ -1027,25 +1029,42 @@ static t_eReturnCode s_FMKFDCAN_Operational(void)
 {
     t_eReturnCode Ret_e =  RC_OK;
     t_uint8 idxNode_u8;
-    t_sFMKFDCAN_NodeInfo *nodeInfo_ps;
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
+    t_uint32 currenTime_u32;
 
     for(idxNode_u8 = (t_uint8)0 ; idxNode_u8 < FMKFDCAN_NODE_NB ; idxNode_u8++)
     {
-        if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)True)
+        if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)TRUE)
         {
             nodeInfo_ps = &g_NodeInfo_as[idxNode_u8];
+            FMKCPU_GetTick(&currenTime_u32);
             // check flags for this Node
-            if(nodeInfo_ps->Flag_s.ErrorDetected_b == (t_bool)True)
+            if(nodeInfo_ps->Flag_s.ErrorDetected_b == (t_bool)TRUE)
             {
-                // PerformDiagnosticEvent
-            }
-            if(nodeInfo_ps->Flag_s.RxQueuePending_b == (t_bool)True)
-            {
-                // Manage Calling some Callback until Qeuue is off or MAX COUNTOR attien
-            }
-            if(nodeInfo_ps->Flag_s.TxQueuePending_b == (t_bool)True)
-            {
-                // see if flag are already been reach 
+                //---- see if error is still active ----//
+                if(nodeInfo_ps->nodeHealth_e != FMKFDCAN_NODE_STATE_OK)
+                {
+                    APPSDM_ReportDiagEvnt(  APPSDM_DIAG_ITEM_FMK_FDCAN_OPE_ERROR,
+                                            APPSDM_DIAG_ITEM_REPORT_FAIL,
+                                            idxNode_u8,
+                                            nodeInfo_ps->nodeHealth_e);
+
+                    //---- reset the node state ans see if callback still call us with errors ----//
+                    if((currenTime_u32 - nodeInfo_ps->lastErrorCb_u32) > 100)
+                    {
+                        nodeInfo_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_OK;
+                    }
+                }
+                else 
+                {
+                    nodeInfo_ps->Flag_s.ErrorDetected_b = (t_bool)FALSE;
+                    APPSDM_ReportDiagEvnt(  APPSDM_DIAG_ITEM_FMK_FDCAN_OPE_ERROR,
+                                            APPSDM_DIAG_ITEM_REPORT_PASS,
+                                            idxNode_u8,
+                                            (t_uint16)0);
+                }
+                
+                
             }
         }
     }
@@ -1089,7 +1108,9 @@ static void s_FMKFDCAN_BspTxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                     break;
                 }
                 case FMKFDCAN_BSP_TX_CB_BUFFER_ABORT:
-                    // Error Management
+                    g_NodeInfo_as[idxNode_u8].Flag_s.ErrorDetected_b = (t_bool)TRUE;
+                    FMKCPU_GetTick(&g_NodeInfo_as[idxNode_u8].lastErrorCb_u32);
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_HWTX_FIFO;
                     break;
                 //---------Not Deal With This Function---------//
                 case FMKFDCAN_BSP_RX_CB_FIFO_0:
@@ -1150,11 +1171,11 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                     bspRxFifo_32 = FDCAN_RX_FIFO1;
                     break;
                 }
-                //---------Not Deal With This Function---------//
+                //---- not deal in this function ----//
+                case FMKFDCAN_BSP_TX_CB_BUFFER_ABORT:
                 case FMKFDCAN_BSP_CB_PROTOCOL_ERR:
                 case FMKFDCAN_BSP_TX_CB_EVENT:
                 case FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE:
-                case FMKFDCAN_BSP_TX_CB_BUFFER_ABORT:
                 case FMKFDCAN_BSP_TX_CB_FIFO_EMPTY:
                 case FMKFDCAN_BSP_CB_NB:
                 default: 
@@ -1177,7 +1198,10 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                     break;
                     case FDCAN_IT_RX_FIFO0_MESSAGE_LOST:
                     case FDCAN_IT_RX_FIFO1_MESSAGE_LOST:
+                        nodeInfos_ps->Flag_s.ErrorDetected_b = (t_bool)TRUE;
+                        nodeInfos_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_HWRX_FIFO;
                         nodeInfos_ps->rxMsgDiag_s.rxMsgDropped_u32++;
+                        FMKCPU_GetTick(&nodeInfos_ps->lastErrorCb_u32);
                     break;
                     default:
                     break;
@@ -1188,7 +1212,11 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
             
             if(nbItemLeftQueue_u8 < nbMsgToTreat_u8)
             {
+                nodeInfos_ps->Flag_s.ErrorDetected_b = (t_bool)TRUE;
+                nodeInfos_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_SWRX_FIFO;
+                FMKCPU_GetTick(&nodeInfos_ps->lastErrorCb_u32);
                 ASSERT((t_uint16)nbItemLeftQueue_u8);
+
                 //---- put a maximum of element ----//
                 nbMsgToTreat_u8 = nbItemLeftQueue_u8;
             }
@@ -1207,9 +1235,9 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 if(Ret_e == RC_OK)
                 {
                     //--- WARNING maybe not good to stop fast task isr -----//
-                    g_NodeInfo_as[idxNode_u8].Flag_s.readOpe_b = (t_bool)TRUE;
-                    Ret_e = LIBQUEUE_WriteElement(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &RxItemBuffer_s, sizeof(RxItemBuffer_s));
-                    g_NodeInfo_as[idxNode_u8].Flag_s.readOpe_b = (t_bool)FALSE;
+                    nodeInfos_ps->Flag_s.readOpe_b = (t_bool)TRUE;
+                    Ret_e = LIBQUEUE_WriteElement(&nodeInfos_ps->RxSoftQueue_s, &RxItemBuffer_s, sizeof(RxItemBuffer_s));
+                    nodeInfos_ps->Flag_s.readOpe_b = (t_bool)FALSE;
                     if(Ret_e != RC_OK)
                     {
                         ASSERT((t_uint16)Ret_e);
@@ -1217,7 +1245,10 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 }
             }
             //---------Flag RxFrame Pending ---------//
-            g_NodeInfo_as[idxNode_u8].Flag_s.RxQueuePending_b = (t_bool)True;
+            if(nodeInfos_ps->Flag_s.RxQueuePending_b == (t_bool)FALSE)
+            {
+                nodeInfos_ps->Flag_s.RxQueuePending_b = (t_bool)TRUE;
+            }
         }
     }
 
@@ -1284,8 +1315,8 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
             f_bspInit_ps->Init.TransmitPause = DISABLE;
             f_bspInit_ps->Init.ProtocolException = ENABLE;
             //--------------One per FIFO to allowed every ID----------//
-            f_bspInit_ps->Init.StdFiltersNbr = (t_uint32)2; 
-            f_bspInit_ps->Init.ExtFiltersNbr = (t_uint32)0;
+            f_bspInit_ps->Init.StdFiltersNbr = (t_uint32)0; 
+            f_bspInit_ps->Init.ExtFiltersNbr = (t_uint32)2;
 
             f_bspInit_ps->Init.TxFifoQueueMode = bspTxQueueType_u32;
 
@@ -1431,46 +1462,68 @@ static void s_FMKFDCAN_BspErrorEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
         }
         if(idxNode_u8 != FMKFDCAN_NODE_NB)
         {
-            // update flag 
-            g_NodeInfo_as[idxNode_u8].Flag_s.ErrorDetected_b = (t_bool)True;
+            // update flag
+            if(g_NodeInfo_as[idxNode_u8].Flag_s.ErrorDetected_b == (t_bool)FALSE)
+            {
+                g_NodeInfo_as[idxNode_u8].Flag_s.ErrorDetected_b = (t_bool)TRUE;
+            }
+            FMKCPU_GetTick(&g_NodeInfo_as[idxNode_u8].lastErrorCb_u32);
+
             switch(f_EvntCbInfo_u32)
             {
                 case HAL_FDCAN_ERROR_NONE:
-                    Ret_e = RC_OK;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_OK;
                     break;
                 case HAL_FDCAN_ERROR_NOT_STARTED:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_NOT_STARTED;
+                    break;
                 case HAL_FDCAN_ERROR_NOT_INITIALIZED:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_NOT_INIT;
+                    break;
                 case HAL_FDCAN_ERROR_NOT_READY:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_NOT_READY;
+                    break;
                 case HAL_FDCAN_ERROR_PARAM:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_PARAM;
+                    break;
                 case HAL_FDCAN_ERROR_NOT_SUPPORTED:
-                    g_NodeInfo_as[idxNode_u8].nodeHealth_e |= FMKFDCAN_NODE_STATE_ERR_PARAM_INIT;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_NOT_SUPPORTED;
                     break;
                 case HAL_FDCAN_ERROR_TIMEOUT:
-                    g_NodeInfo_as[idxNode_u8].nodeHealth_e |= FMKFDCAN_NODE_STATE_ERR_TIMEOUT;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_TIMEOUT;
                     break;
-                case HAL_FDCAN_ERROR_FIFO_EMPTY:
                 case HAL_FDCAN_ERROR_FIFO_FULL:
-                    g_NodeInfo_as[idxNode_u8].nodeHealth_e |= FMKFDCAN_NODE_STATE_ERR_FIFO;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_HWTX_FIFO;
                     break;
                 case HAL_FDCAN_ERROR_PROTOCOL_ARBT:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_PROTOCOL_ARBT;
+                    break;
                 case HAL_FDCAN_ERROR_PROTOCOL_DATA:
-                    g_NodeInfo_as[idxNode_u8].nodeHealth_e |= FMKFDCAN_NODE_STATE_ERR_PROTOCOL;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_PROTOCOL_DATA;
                     break;
                 case HAL_FDCAN_ERROR_LOG_OVERFLOW:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_LOG_OVERFLOW;
+                    break;
                 case HAL_FDCAN_ERROR_RAM_ACCESS:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_RAM_ACCESS;
+                    break;
                 case HAL_FDCAN_ERROR_PENDING:
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_PENDING;
+                    break;
                 case HAL_FDCAN_ERROR_RESERVED_AREA:
-                    g_NodeInfo_as[idxNode_u8].nodeHealth_e |= FMKFDCAN_NODE_STATE_ERR_MEM;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_RESERVED_AREA;
                     break;
                 case HAL_FDCAN_ERROR_RAM_WDG:
-                    g_NodeInfo_as[idxNode_u8].nodeHealth_e |= FMKFDCAN_NODE_STATE_ERR_WDG;
+                    g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_RAM_WDG;
                     break;
+                case HAL_FDCAN_ERROR_FIFO_EMPTY:
                 default:
                     Ret_e = RC_OK;
             }   
         }
     }
 
+    return;
 }
 /*********************************
 * s_FMKFDCAN_CopyBspTxItem
@@ -1584,7 +1637,7 @@ static t_eReturnCode s_FMKFDCAN_SetNodeFilters(void)
     t_uint8 idxNode_u8;
     HAL_StatusTypeDef bspRet_e = HAL_OK;
 
-    #warning('Filter are for Extended ID, please change following line if Node is use in Extended Mode, Think to also changed bspInit FilerNb')
+    #warning('Filter are for Extended ID, please change following line if Node is use in Standard Mode, Think to also changed bspInit FilerNb')
     bspFilter_s.IdType = FDCAN_EXTENDED_ID;
     bspFilter_s.FilterIndex = 0;                 // Index du filtre
     bspFilter_s.FilterType = FDCAN_FILTER_MASK;  // Type de filtre
@@ -1908,13 +1961,14 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
                 Ret_e = s_FMKFDCAN_UserCallbackMngmt(   f_node_e,
                                                         &rxItemEvnt_s);
             }
-            if(Ret_e == RC_OK)
-            {
-                //--------- Call Callback User with RxItem---------//
-                
-            }
             if(Ret_e != RC_OK)
             {
+                if(nodeInfo_ps->Flag_s.ErrorDetected_b == (t_bool)FALSE)
+                {
+                    nodeInfo_ps->Flag_s.ErrorDetected_b = (t_bool)TRUE;
+                    nodeInfo_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_SWRX_FIFO;
+                    FMKCPU_GetTick(&nodeInfo_ps->lastErrorCb_u32);
+                }
                 nodeInfo_ps->rxMsgDiag_s.rxMsgDropped_u32++;
             }
             else 
