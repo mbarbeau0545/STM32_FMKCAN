@@ -104,7 +104,8 @@ typedef struct
     t_uint32 rxMsgProcess_u32;      /**< Number of msg process */
     t_uint32 rxMsgDropped_u32;      /**< Number of message lost */
     t_uint32 rxOverflow_u32;        /**< Number of rx Fifo overflow */
-} t_sFMKFDCAN_RxMsgDiag;
+    t_uint32 txMsgSend_u32;         /**< Number of Tx Msg send */
+} t_sFMKFDCAN_TxMsgDiag;
 /**
  * @brief Node information structure for FDCAN configuration and status.
  */
@@ -114,7 +115,7 @@ typedef struct __t_sFMKFDCAN_NodeInfo
     t_sLIBQUEUE_QueueCore TxSoftQueue_s;                    /**< Transmission Queue management*/
     t_sLIBQUEUE_QueueCore RxSoftQueue_s;                    /**< Transmission Queue management*/
     t_sFMKFDCAN_UserItemSub * userSubInfo_pas;              /**< Pointor to user register information */
-    t_sFMKFDCAN_RxMsgDiag rxMsgDiag_s;
+    t_sFMKFDCAN_TxMsgDiag msgDiag_s;
     t_uint8 nbSubscriptions_u8;                             /**< Number of subscription done for the node */
     t_eFMKCPU_ClockPort c_Clock_e;                          /**< Clock port associated with the FDCAN node. */
     t_eFMKCPU_IRQNType c_IrqnLine1_e;                       /**< IRQ line 1 associated with the FDCAN peripheral. */
@@ -277,14 +278,14 @@ static t_eReturnCode s_FMKFDCAN_RetrieveRxItem(t_eFMKFDCAN_NodeList f_Node_e,
  *	@brief      Copy a Software TxItem into a Bsp TxItem.\n
  *
  *	@param[in] f_bspTxItem_ps   : a pointer to bsp RxITem to copy Data Strucutre -> @ref FDCAN_TxHeaderTypeDef
- *	@param[in] f_TxItemCfg_s    : a pointer to software TxITem  -> @ref t_sFMKFDCAN_TxItemCfg
+ *	@param[in] f_TxItemCfg_s    : a pointer to software TxITem  -> @ref t_sFMKFDCAN_TxItem
  *
  *  @retval RC_OK                             @ref RC_OK
  *  @retval RC_ERROR_PARAM_INVALID            @ref RC_ERROR_PARAM_INVALID
  *  @retval RC_ERROR_PTR_NULL                 @ref RC_ERROR_PTR_NULL
  *  @retval RC_ERROR_NOT_SUPPORTED            @ref RC_ERROR_NOT_SUPPORTED
  */
-static t_eReturnCode s_FMKFDCAN_CopyBspTxItem(t_sFMKFDCAN_TxItemCfg *f_TxItemCfg_s, FDCAN_TxHeaderTypeDef *f_bspTxItem_ps);
+static t_eReturnCode s_FMKFDCAN_CopyBspTxItem(t_sFMKFDCAN_TxItem *f_TxItemCfg_s, FDCAN_TxHeaderTypeDef *f_bspTxItem_ps);
 /**
  *	@brief      Copy a Software RxItem into a Bsp RxItem.\n
  *
@@ -378,6 +379,7 @@ static t_eReturnCode s_FMKFDCAN_SetHwFifoOpeMode(t_eFMKFDCAN_NodeList f_Node_e ,
  *	@note       This function deal with Rx Software Fifo, take several elements
  *              from the Fifo, interpret it and call user with registration mapping
  *              If there is some Tx Fifo item, we will try to put it into Hardware Fifo.\n
+ * @example     Send 30 Msg of 64 bytes and receive it (60) and treat in less than 50 ms
  *              
  *	 
  */
@@ -591,10 +593,11 @@ t_eReturnCode FMKFDCAN_Init(void)
         g_NodeInfo_as[idxNode_u8].bspNode_s.Instance            = c_FmkFdcan_NodeCfg_as[idxNode_u8].Instance;
         g_NodeInfo_as[idxNode_u8].userSubInfo_pas               = (t_sFMKFDCAN_UserItemSub *)(&g_UserRegisterEvnt_as[idxNode_u8][0]);
         g_NodeInfo_as[idxNode_u8].nbSubscriptions_u8            = (t_uint8)0;
-        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxMsgDropped_u32  = (t_uint32)0;
-        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxMsgProcess_u32  = (t_uint32)0;
-        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxMsgReceived_u32 = (t_uint32)0;
-        g_NodeInfo_as[idxNode_u8].rxMsgDiag_s.rxOverflow_u32 = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].msgDiag_s.rxMsgDropped_u32  = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].msgDiag_s.rxMsgProcess_u32  = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].msgDiag_s.rxMsgReceived_u32 = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].msgDiag_s.rxOverflow_u32    = (t_uint32)0;
+        g_NodeInfo_as[idxNode_u8].msgDiag_s.txMsgSend_u32     = (t_uint32)0;
 
         //-------------------Init Bsp Callback To Deactivate----------------//
         for(idxBspCallback_u8 = (t_uint8)0 ; idxBspCallback_u8 < FMKFDCAN_BSP_CB_NB ; idxBspCallback_u8++)
@@ -777,7 +780,7 @@ t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFM
 /*********************************
 * FMKFDCAN_SendTxItem
 *********************************/
-t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItemCfg f_TxItemCfg_s)
+t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItem f_TxItemCfg_s)
 {
     t_eReturnCode Ret_e;
     HAL_StatusTypeDef bspRet_e = HAL_OK;
@@ -814,6 +817,10 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
                 if(bspRet_e != HAL_OK)
                 {
                     Ret_e = RC_WARNING_WRONG_RESULT;
+                }
+                else 
+                {
+                    nodeInfo_ps->msgDiag_s.txMsgSend_u32++;
                 }
             }
             //-----if hardware fifo Tx full, put in in software fifo if dlc <= 8-----//
@@ -1189,18 +1196,18 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 {
                     case FDCAN_IT_RX_FIFO0_FULL:
                     case FDCAN_IT_RX_FIFO1_FULL:
-                        nodeInfos_ps->rxMsgDiag_s.rxOverflow_u32++;
+                        nodeInfos_ps->msgDiag_s.rxOverflow_u32++;
                     break;
                     
                     case FDCAN_IT_RX_FIFO0_NEW_MESSAGE:
                     case FDCAN_IT_RX_FIFO1_NEW_MESSAGE:
-                        nodeInfos_ps->rxMsgDiag_s.rxMsgReceived_u32++;
+                        nodeInfos_ps->msgDiag_s.rxMsgReceived_u32++;
                     break;
                     case FDCAN_IT_RX_FIFO0_MESSAGE_LOST:
                     case FDCAN_IT_RX_FIFO1_MESSAGE_LOST:
                         nodeInfos_ps->Flag_s.ErrorDetected_b = (t_bool)TRUE;
                         nodeInfos_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_HWRX_FIFO;
-                        nodeInfos_ps->rxMsgDiag_s.rxMsgDropped_u32++;
+                        nodeInfos_ps->msgDiag_s.rxMsgDropped_u32++;
                         FMKCPU_GetTick(&nodeInfos_ps->lastErrorCb_u32);
                     break;
                     default:
@@ -1528,7 +1535,7 @@ static void s_FMKFDCAN_BspErrorEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
 /*********************************
 * s_FMKFDCAN_CopyBspTxItem
 *********************************/
-static t_eReturnCode s_FMKFDCAN_CopyBspTxItem(t_sFMKFDCAN_TxItemCfg *f_TxItemCfg_s, FDCAN_TxHeaderTypeDef *f_bspTxItem_ps)
+static t_eReturnCode s_FMKFDCAN_CopyBspTxItem(t_sFMKFDCAN_TxItem *f_TxItemCfg_s, FDCAN_TxHeaderTypeDef *f_bspTxItem_ps)
 {
     t_eReturnCode Ret_e = RC_OK;
     t_uint32 bspFramePurpose_u32;
@@ -1899,6 +1906,10 @@ static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node
                     Ret_e = RC_ERROR_WRONG_RESULT;
                     break;
                 }
+                else 
+                {
+                    nodeInfo_ps->msgDiag_s.txMsgSend_u32++;
+                }
 
                 //---------Increment processed message count---------//
                 msgProcessed_u8++;
@@ -1969,11 +1980,11 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
                     nodeInfo_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_SWRX_FIFO;
                     FMKCPU_GetTick(&nodeInfo_ps->lastErrorCb_u32);
                 }
-                nodeInfo_ps->rxMsgDiag_s.rxMsgDropped_u32++;
+                nodeInfo_ps->msgDiag_s.rxMsgDropped_u32++;
             }
             else 
             {
-                nodeInfo_ps->rxMsgDiag_s.rxMsgProcess_u32++;
+                nodeInfo_ps->msgDiag_s.rxMsgProcess_u32++;
             }
 
             //---- update Rx Queue size ----//

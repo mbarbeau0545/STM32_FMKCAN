@@ -174,7 +174,7 @@ typedef struct
         t_sFMKFDCAN_NodeMessage CanMsg_s;      /**< Message structure containing data and direction for transmission. */
         t_eFMKFDCAN_FrameFormat frameFormat_e; /**< Format of the CAN frame (standard or extended). */
         t_eFMKFDCAN_BitRateSwitchStatus BitRate_e; /**< Bit rate switching status (enabled or disabled). */
-    } t_sFMKFDCAN_TxItemCfg;
+    } t_sFMKFDCAN_TxItem;
     /* CAUTION : Automatic generated code section for Structure: Start */
 
     /* CAUTION : Automatic generated code section for Structure: End */
@@ -257,14 +257,14 @@ typedef struct
     *               put the TxItem into software Buffer and try later on ONLY IF DLC (data_len) IS <= 8.\n
     *
     *	@param[in] f_NodeStatus_e : CAN  Node -> enum value from @ref t_eFMKFDCAN_NodeList
-    *	@param[in] f_TxItemCfg_s  : Structure for TxItem @ref t_sFMKFDCAN_TxItemCfg
+    *	@param[in] f_TxItemCfg_s  : Structure for TxItem @ref t_sFMKFDCAN_TxItem
     *	 
     *  @retval RC_OK                             @ref RC_OK
     *  @retval RC_WARNING_BUSY                   @ref RC_WARNING_BUSY
     *  @retval RC_WARNING_WRONG_RESULT           @ref RC_WARNING_WRONG_RESULT
     *
     */
-    t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItemCfg f_TxItemCfg_s);
+    t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItem f_TxItemCfg_s);
     /**
     *
     *	@brief      DO NOT USE, Function to get the Handle Type def for IRQN_Handler Function
