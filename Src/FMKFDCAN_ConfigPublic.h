@@ -27,17 +27,22 @@
     // ********************************************************************
     // *                      Types
     // ********************************************************************
+        //-----------------------------ENUM TYPES-----------------------------//
+    
+    /* CAUTION : Automatic generated code section for Enum: Start */
     /**
-     * @brief List of FDCAN nodes.
-     */
+    * @brief List of FDCAN nodes..
+    */
     typedef enum
     {
-        FMKFDCAN_NODE_1 = 0x00, /**< Node 1 identifier. */
-        FMKFDCAN_NODE_2,        /**< Node 2 identifier. */
-        FMKFDCAN_NODE_3,        /**< Node 3 identifier. */
-
-        FMKFDCAN_NODE_NB,       /**< Total number of nodes. */
+        FMKFDCAN_NODE_1 = 0,                  /**< Node 1 Identifier */
+        FMKFDCAN_NODE_2,                        /**< Node 2 Identifier */
+        FMKFDCAN_NODE_3,                        /**< Node 3 Identifier */
+    
+        FMKFDCAN_NODE_NB,
     } t_eFMKFDCAN_NodeList;
+
+    /* CAUTION : Automatic generated code section for Enum: End */
 
     /**
      * @brief Operating modes for an FDCAN node.
@@ -197,11 +202,7 @@
         FMKFDCAN_FRAME_PURPOSE_NB,            /**< Total number of frame purposes. */
     } t_eFMKFDCAN_FramePurpose;
 
-    //-----------------------------ENUM TYPES-----------------------------//
-    
-    /* CAUTION : Automatic generated code section for Enum: Start */
 
-    /* CAUTION : Automatic generated code section for Enum: End */
 
     //-----------------------------TYPEDEF TYPES---------------------------//
     

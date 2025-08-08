@@ -41,12 +41,12 @@
     /**
      * @brief Buffer size for reception software queue.
      */
-    #define FMKFDCAN_RX_SOFT_BUFF_SIZE ((t_uint8)20)
+    #define FMKFDCAN_RX_DATA_SIZE       (FMKFDCAN_DLC_8)
 
     /**
      * @brief Buffer size for transmission software queue.
      */
-    #define FMKFDCAN_TX_SOFT_BUFF_SIZE ((t_uint8)20)
+    #define FMKFDCAN_TX_DATA_SIZE       (FMKFDCAN_DLC_8)
 
     /**
      * @brief Maximum number of RX event registrations.
@@ -58,7 +58,7 @@
     /**
      * @brief Maximum number of items to send from TX queue per interrupt.
      */
-    #define FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT ((t_uint8)5)
+    #define FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT ((t_uint8)8)
 
     /**
      * @brief Maximum number of queue items processed per interrupt.
@@ -115,6 +115,24 @@
         t_uint8 timeSeg2_u8;    /**< Time segment 2 value. */
     } t_sFMKFDCAN_BaudrateCfg;
 
+        /**
+     * @brief Rx item buffer structure for receiving FDCAN frames.
+     */
+    typedef struct __t_sFMKFDCAN_RxItemBuffer
+    {
+        FDCAN_RxHeaderTypeDef bspRxItem_s; /**< FDCAN BSP Rx header structure for frame details. */
+        t_uint8 data_ua8[FMKFDCAN_RX_DATA_SIZE];  /**< Data buffer for the received frame. */
+    } t_sFMKFDCAN_RxItemBuffer;
+
+    /**
+     * @brief Tx item buffer structure for transmitting FDCAN frames.
+     */
+    typedef struct 
+    {
+        FDCAN_TxHeaderTypeDef bspTxItem_s; /**< FDCAN BSP Tx header structure for frame details. */
+        t_uint8 data_ua8[FMKFDCAN_TX_DATA_SIZE];  /**< Data buffer for the frame to transmit. */
+    } t_sFMKFDCAN_TxItemBuffer;
+
     /**
      * @brief Configuration structure FDCAN Node.
      */
@@ -124,6 +142,10 @@
         t_eFMKCPU_ClockPort c_Clock_e;
         t_eFMKCPU_IRQNType c_IrqnLine1_e;
         t_eFMKCPU_IRQNType c_IrqnLine2_e;
+        t_sFMKFDCAN_RxItemBuffer * rxBufferStartAddress_pas;
+        t_uint16 rxBufferSize_u16;
+        t_sFMKFDCAN_TxItemBuffer * txBufferStartAddress_pas;
+        t_uint16 txBufferSize_u16;
     } t_sFMKFDCAN_NodeCfg;
     /* CAUTION : Automatic generated code section for Structure: Start */
 
@@ -137,28 +159,52 @@
     // *                      Variables
     // ********************************************************************
     /* CAUTION : Automatic generated code section for Variable: Start */
+    //--------- Tx, Rx Buffer for Can Node 1 ---------//
+    t_sFMKFDCAN_RxItemBuffer g_Node1_RxBuffer_as[40];
+    t_sFMKFDCAN_TxItemBuffer g_Node1_TxBuffer_as[60];
+    //--------- Tx, Rx Buffer for Can Node 2 ---------//
+    t_sFMKFDCAN_RxItemBuffer g_Node2_RxBuffer_as[0];
+    t_sFMKFDCAN_TxItemBuffer g_Node2_TxBuffer_as[0];
+    //--------- Tx, Rx Buffer for Can Node 3 ---------//
+    t_sFMKFDCAN_RxItemBuffer g_Node3_RxBuffer_as[0];
+    t_sFMKFDCAN_TxItemBuffer g_Node3_TxBuffer_as[0];
 
-    /* CAUTION : Automatic generated code section for Variable: End */
+
+    ///@brief Node configuraiton
     const t_sFMKFDCAN_NodeCfg c_FmkFdcan_NodeCfg_as[FMKFDCAN_NODE_NB] = {
         [FMKFDCAN_NODE_1] = {
             .Instance = FDCAN1,
             .c_Clock_e = FMKCPU_RCC_CLK_FDCAN,
             .c_IrqnLine1_e = FMKCPU_NVIC_FDCAN1_IT0_IRQN,
             .c_IrqnLine2_e = FMKCPU_NVIC_FDCAN1_IT1_IRQN,
+            .rxBufferStartAddress_pas = (t_sFMKFDCAN_RxItemBuffer *)(&g_Node1_RxBuffer_as[0]),
+            .rxBufferSize_u16 = (t_uint16)40,
+            .txBufferStartAddress_pas = (t_sFMKFDCAN_TxItemBuffer *)(&g_Node1_TxBuffer_as[0]),
+            .txBufferSize_u16 = (t_uint16)60,
         },
         [FMKFDCAN_NODE_2] = {
             .Instance = FDCAN2,
             .c_Clock_e = FMKCPU_RCC_CLK_FDCAN,
             .c_IrqnLine1_e = FMKCPU_NVIC_FDCAN2_IT0_IRQN,
             .c_IrqnLine2_e = FMKCPU_NVIC_FDCAN2_IT1_IRQN,
+            .rxBufferStartAddress_pas = (t_sFMKFDCAN_RxItemBuffer *)(&g_Node2_RxBuffer_as[0]),
+            .rxBufferSize_u16 = (t_uint16)0,
+            .txBufferStartAddress_pas = (t_sFMKFDCAN_TxItemBuffer *)(&g_Node2_TxBuffer_as[0]),
+            .txBufferSize_u16 = (t_uint16)0,
         },
         [FMKFDCAN_NODE_3] = {
             .Instance = FDCAN3,
             .c_Clock_e = FMKCPU_RCC_CLK_FDCAN,
             .c_IrqnLine1_e = FMKCPU_NVIC_FDCAN3_IT0_IRQN,
             .c_IrqnLine2_e = FMKCPU_NVIC_FDCAN3_IT1_IRQN,
+            .rxBufferStartAddress_pas = (t_sFMKFDCAN_RxItemBuffer *)(&g_Node3_RxBuffer_as[0]),
+            .rxBufferSize_u16 = (t_uint16)0,
+            .txBufferStartAddress_pas = (t_sFMKFDCAN_TxItemBuffer *)(&g_Node3_TxBuffer_as[0]),
+            .txBufferSize_u16 = (t_uint16)0,
         },
     };
+
+    /* CAUTION : Automatic generated code section for Variable: End */
 
     const t_eFMKFDCAN_NodeCfgList c_FmkCan_NodeCfg_ae[FMKFDCAN_NODE_NB] = {
         FMKFDCAN_NODE_CFG_1,  // FMKFDCAN_NODE_1
@@ -168,20 +214,15 @@
     
 
     const t_bool c_FmkCan_IsNodeActive[FMKFDCAN_NODE_NB] = {
-        (t_bool)False,  // FMKFDCAN_NODE_1
+        (t_bool)True,  // FMKFDCAN_NODE_1
         (t_bool)False, // FMKFDCAN_NODE_2
         (t_bool)False, // FMKFDCAN_NODE_3
     };
 
-    const t_uint32 c_FmkCan_NodeItLine[FMKFDCAN_NODE_NB] = {
-        FDCAN_INTERRUPT_LINE0,        // FMKFDCAN_NODE_1
-        FDCAN_INTERRUPT_LINE1,        // FMKFDCAN_NODE_2
-        FDCAN_INTERRUPT_LINE1,        // FMKFDCAN_NODE_3
-    };
 
     const t_sFMKFDCAN_DrvNodeCfg c_FmkCan_BspNodeCfgList_as[FMKFDCAN_NODE_CFG_NB] = 
     {// clockDivider_e                      ProtocolUse_e                       FrameBaudrate_e                 DataBaudrate_e                    QueueType_e                       FifoMode_e
-        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,          FMKFDCAN_FRAME_BAUDRATE_250K,   FMKFDCAN_FRAME_BAUDRATE_250K,    FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_1
+        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_NO_BRS,          FMKFDCAN_FRAME_BAUDRATE_250K,   FMKFDCAN_FRAME_BAUDRATE_250K,    FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_1
         {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,          FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_2
         {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_NO_BRS,     FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_3
         {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_BRS,        FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_4M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_4
@@ -208,48 +249,63 @@
     //********************************************************************************
     //                      Public functions - Prototyupes
     //********************************************************************************
-    /**********************************
-    * FDCAN1_IT0_IRQHandler
-    **********************************/
-    void FDCAN1_IT0_IRQHandler(void)
-    {
-        HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_1));
-    }
-    /**********************************
-    * FDCAN1_IT1_IRQHandler
-    **********************************/
-    void FDCAN1_IT1_IRQHandler(void)
-    {
-        HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_1));
-    }
+    /* CAUTION : Automatic generated code section for FDCAN IRQN Handler : Start */
     /**********************************
     * FDCAN2_IT0_IRQHandler
     **********************************/
     void FDCAN2_IT0_IRQHandler(void)
     {
-        HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_2));
+    HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_2));
+    return;
     }
+
     /**********************************
     * FDCAN2_IT1_IRQHandler
     **********************************/
     void FDCAN2_IT1_IRQHandler(void)
     {
-        HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_2));
+    HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_2));
+    return;
     }
+
     /**********************************
     * FDCAN3_IT0_IRQHandler
     **********************************/
     void FDCAN3_IT0_IRQHandler(void)
     {
-        HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_3));
+    HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_3));
+    return;
     }
+
     /**********************************
     * FDCAN3_IT1_IRQHandler
     **********************************/
     void FDCAN3_IT1_IRQHandler(void)
     {
-        HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_3));
+    HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_3));
+    return;
     }
+
+    /**********************************
+    * FDCAN1_IT0_IRQHandler
+    **********************************/
+    void FDCAN1_IT0_IRQHandler(void)
+    {
+    HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_1));
+    return;
+    }
+
+    /**********************************
+    * FDCAN1_IT1_IRQHandler
+    **********************************/
+    void FDCAN1_IT1_IRQHandler(void)
+    {
+    HAL_FDCAN_IRQHandler(FMKFDCAN_PRIVATE_GetHandleTypeDef(FMKFDCAN_NODE_1));
+    return;
+    }
+
+    /* CAUTION : Automatic generated code section for FDCAN IRQN Handler : End */
+
 #endif // FMKFDCAN_CONFIGPRIVATE_H_INCLUDED           
 //************************************************************************************
 // End of File
