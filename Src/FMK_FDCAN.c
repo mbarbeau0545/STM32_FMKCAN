@@ -27,7 +27,6 @@
 
 #include "Library/QUEUE/Src/LIBQueue.h"
 #include "Library/SafeMem/SafeMem.h"
-#include "stm32g4xx_hal.h"
 
 // ********************************************************************
 // *                      Defines
@@ -1316,7 +1315,11 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
         if(Ret_e == RC_OK)
         {
             //-------------------Global configuration Init -------------------//
+#if defined(FMKCPU_STM32_ECU_FAMILY_G4)
             f_bspInit_ps->Init.ClockDivider = (t_uint32)bspClkDivider_u32;
+#elif defined(FMKCPU_STM32_ECU_FAMILY_H7)
+
+#endif
             f_bspInit_ps->Init.Mode = FMKFDCAN_NODE_MODE;
             f_bspInit_ps->Init.AutoRetransmission = ENABLE;
             f_bspInit_ps->Init.TransmitPause = DISABLE;
@@ -1351,6 +1354,30 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
             f_bspInit_ps->Init.NominalSyncJumpWidth = c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].syncSeg_u8;
             f_bspInit_ps->Init.NominalTimeSeg1 = c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].timeSeg1_u8;
             f_bspInit_ps->Init.NominalTimeSeg2 = c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].timeSeg2_u8;
+#if defined(FMKCPU_STM32_ECU_FAMILY_H7)
+            /* Here we configure the Rx Buffer FIFO, and Tx Queue
+                in G4 this is done aitomatically with define in fdcan.c 
+                and can be change, here we gonna do pretty much the same thing,
+                but the define wille be in our file 
+                As use only use Rx FIFO 0 as we applied a none filter on FIFO 0
+                every msg matches the filter and goes into FIFO 0, so we set a big FIFO 0
+                and None FIFO 1 */
+            //---- buffer size -----//
+            f_bspInit_ps->Init.RxBuffersNbr = (t_uint32)FMKFDCAN_SRAMCAN_RB0_NBR; // not use for modularity with G4
+            f_bspInit_ps->Init.RxBufferSize = (t_uint32)FMKFDCA_SRAMCAN_RB0_SIZE;
+            //---- Rx FIFO 0 -----//
+            f_bspInit_ps->Init.RxFifo0ElmtsNbr = (t_uint32)FMKFDCAN_SRAMCAN_RF0_NBR;
+            f_bspInit_ps->Init.RxFifo0ElmtSize = (t_uint32)FMKFDCAN_SRAMCAN_RF0_NBR;
+            //---- Rx FIFO 0 -----//
+            f_bspInit_ps->Init.RxFifo1ElmtsNbr = (t_uint32)FMKFDCAN_SRAMCAN_RF1_NBR;
+            f_bspInit_ps->Init.RxFifo1ElmtSize = (t_uint32)FMKFDCAN_SRAMCAN_RF1_NBR;
+            //----  Tx FIFO/Queue -----//
+            f_bspInit_ps->Init.TxFifoQueueElmtsNbr = (t_uint32)FMKFDCAN_SRAMCAN_TFQ_NBR;
+
+            //---- max min filter, we actually put only one but whathever ----// 
+            f_bspInit_ps->Init.ExtFiltersNbr = (t_uint32)FMKCPU_SRAMCAN_FLE_NBR;
+            f_bspInit_ps->Init.StdFiltersNbr = (t_uint32)FMKCPU_SRAMCAN_FLS_NBR;
+#endif
 
             
             //-------------------depending on complete configuration-------------------// 
@@ -1937,7 +1964,6 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
     t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
     t_sFMKFDCAN_RxItemBuffer SoftRxItem_s;
     t_sFMKFDCAN_RxItemEvent rxItemEvnt_s;
-    t_uint8 idxSubscription_u8 = (t_uint8)0;
     t_uint8 RxQueueSize_u8 = (t_uint8)0;
     t_uint8 msgProcessed_u8 = (t_uint8)0;
 
