@@ -827,21 +827,29 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
             else
             {
                 //----------copy structure into SoTxitem_s----------//
-                //-----Copy data Into Software Buffer Structre-----//
-                Ret_e = SafeMem_memcpy( SoTxitem_s.data_ua8, 
-                                        f_TxItemCfg_s.CanMsg_s.data_pu8,
-                                        (t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
-                if(Ret_e == RC_OK)
+                //-----Copy data Into Software Buffer Structre,
+                //      if size fifo element is enough-----//
+                if(f_TxItemCfg_s.CanMsg_s.Dlc_e > FMKFDCAN_TX_BUFFER_DATA_SIZE)
                 {
-                    //----------Write Into Software Queue----------//
-                    Ret_e = LIBQUEUE_WriteElement(  &nodeInfo_ps->TxSoftQueue_s, 
-                                                    &SoTxitem_s, 
-                                                    sizeof(t_sFMKFDCAN_TxItemBuffer));
+                    Ret_e = RC_WARNING_LIMIT_REACHED;
                 }
-                //----------update flag Tx Item to send/----------//
-                if(Ret_e == RC_OK)
+                else 
                 {
-                    nodeInfo_ps->Flag_s.TxQueuePending_b = True;
+                    Ret_e = SafeMem_memcpy( SoTxitem_s.data_ua8, 
+                                            f_TxItemCfg_s.CanMsg_s.data_pu8,
+                                            (t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
+                    if(Ret_e == RC_OK)
+                    {
+                        //----------Write Into Software Queue----------//
+                        Ret_e = LIBQUEUE_WriteElement(  &nodeInfo_ps->TxSoftQueue_s, 
+                                                        &SoTxitem_s, 
+                                                        sizeof(t_sFMKFDCAN_TxItemBuffer));
+                    }
+                    //----------update flag Tx Item to send/----------//
+                    if(Ret_e == RC_OK)
+                    {
+                        nodeInfo_ps->Flag_s.TxQueuePending_b = True;
+                    }
                 }
             }
         }
