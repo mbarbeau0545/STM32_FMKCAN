@@ -1338,7 +1338,7 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
             //-------------------Init for nominal baudrate-------------------//
             /* Information 
             *   Here in c_FmkCan_BspBaudrateCfg_as, the configuration has been made 
-            *   for Clock Cfg (120Mhz), if user wants to divided this clock, in order to 
+            *   for Clock Cfg (128Mhz), if user wants to divided this clock, in order to 
             *   obtain the right baudrate, we have to multiply the the value of the enum.\n
             *   In consequence no matter the clock divider value, the baudrate will always be 
             *   good 
@@ -1352,7 +1352,7 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
             *                                   (Prescaler (* x)) * (SyncSeg + TimSeg1 + TimSeg2)
             */
             nominalPrescaler_u32 = (t_uint32)(c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].prescaler_u16 *
-                                        f_NodeCfg_s.clockDivider_e);
+                                        (t_uint32)f_NodeCfg_s.clockDivider_e);
 
             //-------------------copy information -------------------//            
             f_bspInit_ps->Init.NominalPrescaler = nominalPrescaler_u32;

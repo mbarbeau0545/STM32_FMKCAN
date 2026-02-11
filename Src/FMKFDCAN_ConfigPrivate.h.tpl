@@ -27,7 +27,7 @@
     /**
      * @brief Operating mode for FDCAN nodes.
      */
-    #define FMKFDCAN_NODE_MODE (FDCAN_MODE_INTERNAL_LOOPBACK)
+    #define FMKFDCAN_NODE_MODE (FDCAN_MODE_NORMAL)
     /**
      * @brief Source clock for FDCAN kernel (in MHz).
      */
@@ -41,12 +41,12 @@
     /**
      * @brief Buffer size for reception software queue.
      */
-    #define FMKFDCAN_RX_DATA_SIZE       (FMKFDCAN_DLC_8)
+    #define FMKFDCAN_RX_BUFFER_DATA_SIZE       (FMKFDCAN_DLC_8)
 
     /**
      * @brief Buffer size for transmission software queue.
      */
-    #define FMKFDCAN_TX_DATA_SIZE       (FMKFDCAN_DLC_8)
+    #define FMKFDCAN_TX_BUFFER_DATA_SIZE       (FMKFDCAN_DLC_8)
 
     /**
      * @brief Maximum number of RX event registrations.
@@ -70,6 +70,73 @@
      */
     #define FMKFDCAN_64_BYTES ((t_uint8)64)
 
+#if defined (FMKCPU_STM32_ECU_FAMILY_G4)
+    ///@brief Rx,Tx Bsp Buffer size, @note once we integrate the HAL_LIB inside project change this define in fdcan.c for G4
+    #define FMKFDCAN_SRAMCAN_RF0_NBR                ((t_uint32)6U)         /* RX FIFO 0 Elements Number             */
+    #define FMKFDCAN_SRAMCAN_RF1_NBR                ((t_uint32)0U)         /* RX FIFO 1 Elements Number             */
+    #define FMKFDCAN_SRAMCAN_TEF_NBR                ((t_uint32)3U)         /* TX Event FIFO Elements Number         */
+    #define FMKFDCAN_SRAMCAN_TFQ_NBR                ((t_uint32)3U)         /* TX FIFO/Queue Elements Number         */
+
+    #define FMKFDCA_SRAMCAN_FLS_SIZE                ((t_uint32)1U  * 4U)         /* Filter Standard Element Size in bytes */
+    #define FMKFDCA_SRAMCAN_FLE_SIZE                ((t_uint32)2U  * 4U)         /* Filter Extended Element Size in bytes */
+    #define FMKFDCA_SRAMCAN_RF0_SIZE                ((t_uint32)18U * 4U)         /* RX FIFO 0 Elements Size in bytes      */
+    #define FMKFDCA_SRAMCAN_RF1_SIZE                ((t_uint32)18U * 4U)         /* RX FIFO 1 Elements Size in bytes      */
+    #define FMKFDCA_SRAMCAN_TEF_SIZE                ((t_uint32)2U  * 4U)         /* TX Event FIFO Elements Size in bytes  */
+    #define FMKFDCA_SRAMCAN_TFQ_SIZE                ((t_uint32)18U * 4U)         /* TX FIFO/Queue Elements Size in bytes  */
+#elif defined(FMKCPU_STM32_ECU_FAMILY_H7)
+    ///@brief Rx,Tx Bsp Buffer size, 
+
+    #define FMKCPU_SRAMCAN_FLS_NBR                  ((t_uint32)28U)        /* Max. Filter List Standard Number      */
+    #define FMKCPU_SRAMCAN_FLE_NBR                  ((t_uint32)8U)         /* Max. Filter List Extended Number      */
+    #define FMKFDCAN_SRAMCAN_RF0_NBR                ((t_uint32)64U)         /* RX FIFO 0 Elements Number */
+    #define FMKFDCAN_SRAMCAN_RF1_NBR                ((t_uint32)0U)         /* RX FIFO 1 Elements Number */
+    #define FMKFDCAN_SRAMCAN_RB0_NBR                ((t_uint32)0U)         /* RX Buffer 0 Elements Number */
+    #define FMKFDCAN_SRAMCAN_TEF_NBR                ((t_uint32)32U)         /* TX Event FIFO Elements Number */
+    #define FMKFDCAN_SRAMCAN_TFQ_NBR                ((t_uint32)32U)         /* TX FIFO/Queue Elements Number */
+
+    #define FMKFDCA_SRAMCAN_FLS_SIZE                ((t_uint32)1U  * 4U)         /* Filter Standard Element Size in bytes */
+    #define FMKFDCA_SRAMCAN_FLE_SIZE                ((t_uint32)2U  * 4U)         /* Filter Extended Element Size in bytes */
+    #define FMKFDCA_SRAMCAN_RF0_SIZE                ((t_uint32)18U * 4U)         /* RX FIFO 0 Elements Size in bytes */
+    #define FMKFDCA_SRAMCAN_RF1_SIZE                ((t_uint32)18U * 4U)         /* RX FIFO 1 Elements Size in bytes */
+    #define FMKFDCA_SRAMCAN_RB0_SIZE                ((t_uint32)18U * 4U)         /* RX buffer 0 Elements Size in bytes */
+    #define FMKFDCA_SRAMCAN_TEF_SIZE                ((t_uint32)2U  * 4U)         /* TX Event FIFO Elements Size in bytes */
+    #define FMKFDCA_SRAMCAN_TFQ_SIZE                ((t_uint32)18U * 4U)         /* TX FIFO/Queue Elements Size in bytes */
+#endif //
+///@brief Define for Interrupt mask set they are define in G4 but not in H7
+#ifndef FDCAN_IT_LIST_RX_FIFO0
+#define FDCAN_IT_LIST_RX_FIFO0         (FDCAN_IT_RX_FIFO0_MESSAGE_LOST | \
+                                        FDCAN_IT_RX_FIFO0_FULL         | \
+                                        FDCAN_IT_RX_FIFO0_NEW_MESSAGE)       /*!< RX FIFO 0 Interrupts List          */
+#endif // FDCAN_IT_LIST_RX_FIFO0
+#ifndef FDCAN_IT_LIST_RX_FIFO1
+#define FDCAN_IT_LIST_RX_FIFO1         (FDCAN_IT_RX_FIFO1_MESSAGE_LOST | \
+                                        FDCAN_IT_RX_FIFO1_FULL         | \
+                                        FDCAN_IT_RX_FIFO1_NEW_MESSAGE)       /*!< RX FIFO 1 Interrupts List          */
+#endif // FDCAN_IT_LIST_RX_FIFO1
+#define FDCAN_IT_LIST_SMSG             (FDCAN_IT_TX_ABORT_COMPLETE | \
+                                        FDCAN_IT_TX_COMPLETE | \
+                                        FDCAN_IT_RX_HIGH_PRIORITY_MSG)       /*!< Status Message Interrupts List     */
+#ifndef FDCAN_IT_LIST_TX_FIFO_ERROR
+#define FDCAN_IT_LIST_TX_FIFO_ERROR    (FDCAN_IT_TX_EVT_FIFO_ELT_LOST | \
+                                        FDCAN_IT_TX_EVT_FIFO_FULL | \
+                                        FDCAN_IT_TX_EVT_FIFO_NEW_DATA | \
+                                        FDCAN_IT_TX_FIFO_EMPTY)              /*!< TX FIFO Error Interrupts List      */
+#endif // FDCAN_IT_LIST_SMSG
+#define FDCAN_IT_LIST_MISC             (FDCAN_IT_TIMEOUT_OCCURRED | \
+                                        FDCAN_IT_RAM_ACCESS_FAILURE | \
+                                        FDCAN_IT_TIMESTAMP_WRAPAROUND)       /*!< Misc. Interrupts List              */
+#ifndef FDCAN_IT_LIST_BIT_LINE_ERROR
+#define FDCAN_IT_LIST_BIT_LINE_ERROR   (FDCAN_IT_ERROR_PASSIVE | \
+                                        FDCAN_IT_ERROR_LOGGING_OVERFLOW)     /*!< Bit and Line Error Interrupts List */
+#endif // FDCAN_IT_LIST_BIT_LINE_ERROR
+#ifndef FDCAN_IT_LIST_PROTOCOL_ERROR
+#define FDCAN_IT_LIST_PROTOCOL_ERROR   (FDCAN_IT_RESERVED_ADDRESS_ACCESS | \
+                                        FDCAN_IT_DATA_PROTOCOL_ERROR | \
+                                        FDCAN_IT_ARB_PROTOCOL_ERROR | \
+                                        FDCAN_IT_RAM_WATCHDOG | \
+                                        FDCAN_IT_BUS_OFF | \
+                                        FDCAN_IT_ERROR_WARNING) 
+#endif // FDCAN_IT_LIST_PROTOCOL_ERROR
     // ********************************************************************
     // *                      Types
     // ********************************************************************
@@ -121,7 +188,7 @@
     typedef struct __t_sFMKFDCAN_RxItemBuffer
     {
         FDCAN_RxHeaderTypeDef bspRxItem_s; /**< FDCAN BSP Rx header structure for frame details. */
-        t_uint8 data_ua8[FMKFDCAN_RX_DATA_SIZE];  /**< Data buffer for the received frame. */
+        t_uint8 data_ua8[FMKFDCAN_RX_BUFFER_DATA_SIZE];  /**< Data buffer for the received frame. */
     } t_sFMKFDCAN_RxItemBuffer;
 
     /**
@@ -130,7 +197,7 @@
     typedef struct 
     {
         FDCAN_TxHeaderTypeDef bspTxItem_s; /**< FDCAN BSP Tx header structure for frame details. */
-        t_uint8 data_ua8[FMKFDCAN_TX_DATA_SIZE];  /**< Data buffer for the frame to transmit. */
+        t_uint8 data_ua8[FMKFDCAN_TX_BUFFER_DATA_SIZE];  /**< Data buffer for the frame to transmit. */
     } t_sFMKFDCAN_TxItemBuffer;
 
     /**
@@ -209,25 +276,29 @@
     const t_eFMKFDCAN_NodeCfgList c_FmkCan_NodeCfg_ae[FMKFDCAN_NODE_NB] = {
         FMKFDCAN_NODE_CFG_1,  // FMKFDCAN_NODE_1
         FMKFDCAN_NODE_CFG_1, // FMKFDCAN_NODE_2
+#if defined(FMKCPU_STM32_ECU_FAMILY_G4)
         FMKFDCAN_NODE_CFG_1, // FMKFDCAN_NODE_3
+#endif
     };
     
 
     const t_bool c_FmkCan_IsNodeActive[FMKFDCAN_NODE_NB] = {
         (t_bool)True,  // FMKFDCAN_NODE_1
-        (t_bool)False, // FMKFDCAN_NODE_2
-        (t_bool)False, // FMKFDCAN_NODE_3
+        FALSE, // FMKFDCAN_NODE_2
+#if defined(FMKCPU_STM32_ECU_FAMILY_G4)
+        FALSE, // FMKFDCAN_NODE_3
+#endif
     };
 
 
     const t_sFMKFDCAN_DrvNodeCfg c_FmkCan_BspNodeCfgList_as[FMKFDCAN_NODE_CFG_NB] = 
     {// clockDivider_e                      ProtocolUse_e                       FrameBaudrate_e                 DataBaudrate_e                    QueueType_e                       FifoMode_e
-        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_NO_BRS,          FMKFDCAN_FRAME_BAUDRATE_250K,   FMKFDCAN_FRAME_BAUDRATE_250K,    FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_1
+        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,          FMKFDCAN_FRAME_BAUDRATE_250K,   FMKFDCAN_FRAME_BAUDRATE_250K,    FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_1
         {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,          FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_2
-        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_NO_BRS,     FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_3
-        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_BRS,        FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_4M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_4
+        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,     FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_3
+        {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,        FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_4M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_4
     };
-    /* /!\/!\/!\ This configration has been calculated for CLOCK FDCAN equals 120MHz but works for every divider /!\/!\/!\*/
+    /* /!\/!\/!\ This configration has been calculated for CLOCK FDCAN equals 128MHz but works for every divider /!\/!\/!\*/
     /*  Formule :
     *                                  Fclock (FMKFDCAN_SRC_CLOCK)
     *  Baudrate =     -----------------------------------------
@@ -236,14 +307,14 @@
     /*< Configuration to found Init baudrate value*/ 
     const t_sFMKFDCAN_BaudrateCfg c_FmkCan_BspBaudrateCfg_as[FMKFDCAN_FRAME_BAUDRATE_NB] = {
     //       prescaler        syncSeg     timeSeg1     timeSeg2         
-            {(t_uint16)150, (t_uint8)1, (t_uint8)15, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_40K
-            {(t_uint16)48,  (t_uint8)1, (t_uint8)15, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_125K
-            {(t_uint16)24,  (t_uint8)1, (t_uint8)15, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_250K 
-            {(t_uint16)12,  (t_uint8)1, (t_uint8)15, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_500K 
-            {(t_uint16)6,   (t_uint8)1, (t_uint8)15, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_1M 
-            {(t_uint16)4,   (t_uint8)1, (t_uint8)10, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_2M
-            {(t_uint16)2,   (t_uint8)1, (t_uint8)10, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_4M
-            {(t_uint16)1,   (t_uint8)1, (t_uint8)10, (t_uint8)4},    // FMKFDCAN_FRAME_BAUDRATE_8M
+            {(t_uint16)200, (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_40K
+            {(t_uint16)64,  (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_125K
+            {(t_uint16)32,  (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_250K 
+            {(t_uint16)16,  (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_500K 
+            {(t_uint16)8,   (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_1M 
+            {(t_uint16)4,   (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_2M
+            {(t_uint16)2,   (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_4M
+            {(t_uint16)1,   (t_uint8)1, (t_uint8)12, (t_uint8)3},    // FMKFDCAN_FRAME_BAUDRATE_8M
     };
 
     //********************************************************************************
