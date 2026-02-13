@@ -662,10 +662,10 @@ t_eReturnCode FMKFDCAN_Cyclic(void)
     {
         case STATE_CYCLIC_CFG:
         {
-            Ret_e = s_FMKFDCAN_ConfigurationState();;
+            Ret_e = s_FMKFDCAN_ConfigurationState();
             if(Ret_e == RC_OK)
             {
-                g_FmkCan_ModState_e = STATE_CYCLIC_WAITING;
+                g_FmkCan_ModState_e = STATE_CYCLIC_PREOPE;
             }
             break;
         }
@@ -676,11 +676,6 @@ t_eReturnCode FMKFDCAN_Cyclic(void)
             {
                 g_FmkCan_ModState_e = STATE_CYCLIC_OPE;
             }
-            break;
-        }
-        case STATE_CYCLIC_WAITING:
-        {
-            // nothing to do just wait AppSys Signal
             break;
         }
         case STATE_CYCLIC_OPE:
@@ -832,6 +827,7 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
                 if(f_TxItemCfg_s.CanMsg_s.Dlc_e > FMKFDCAN_TX_BUFFER_DATA_SIZE)
                 {
                     Ret_e = RC_WARNING_LIMIT_REACHED;
+                    ASSERT((t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
                 }
                 else 
                 {
