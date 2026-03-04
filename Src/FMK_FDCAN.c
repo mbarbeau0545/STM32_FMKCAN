@@ -617,14 +617,14 @@ t_eReturnCode FMKFDCAN_Init(void)
         //-------------------Configure the Rx, Tx Queue----------------//
         // Configure Rx Buffer Queue
         RxBufferCfg_s.bufferHead_pv = c_FmkFdcan_NodeCfg_as[idxNode_u8].rxBufferStartAddress_pas;
-        RxBufferCfg_s.bufferSize_u8 = c_FmkFdcan_NodeCfg_as[idxNode_u8].rxBufferSize_u16,
-        RxBufferCfg_s.elementSize_u8 = sizeof(t_sFMKFDCAN_RxItemBuffer),
+        RxBufferCfg_s.actualSize_u16 = c_FmkFdcan_NodeCfg_as[idxNode_u8].rxBufferSize_u16,
+        RxBufferCfg_s.elementSize_u16 = sizeof(t_sFMKFDCAN_RxItemBuffer),
         RxBufferCfg_s.enableOverwrite_b = False,
 
         Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, RxBufferCfg_s);
 
         if((Ret_e == RC_ERROR_PARAM_INVALID)
-        && (RxBufferCfg_s.bufferSize_u8 == (t_uint8)0))
+        && (RxBufferCfg_s.actualSize_u16 == (t_uint8)0))
         {
             //---- normal 'cause node is not beeing used ----//
             Ret_e = RC_OK;
@@ -634,13 +634,13 @@ t_eReturnCode FMKFDCAN_Init(void)
         if(Ret_e == RC_OK)
         {
             TxBufferCfg_s.bufferHead_pv = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferStartAddress_pas;
-            TxBufferCfg_s.bufferSize_u8 = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferSize_u16,
-            TxBufferCfg_s.elementSize_u8 = sizeof(t_sFMKFDCAN_TxItemBuffer),
+            TxBufferCfg_s.actualSize_u16 = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferSize_u16,
+            TxBufferCfg_s.elementSize_u16 = sizeof(t_sFMKFDCAN_TxItemBuffer),
             TxBufferCfg_s.enableOverwrite_b = False,
 
             Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].TxSoftQueue_s, TxBufferCfg_s);
             if((Ret_e == RC_ERROR_PARAM_INVALID)
-            && (TxBufferCfg_s.bufferSize_u8 == (t_uint8)0))
+            && (TxBufferCfg_s.actualSize_u16 == (t_uint8)0))
             {
                 //---- normal 'cause node is not beeing used ----//
                 Ret_e = RC_OK;
@@ -1144,7 +1144,7 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
     t_eReturnCode Ret_e = RC_OK;
     t_uint8 idxNode_u8;
     t_uint8 LLI_u8;
-    t_uint8 nbItemLeftQueue_u8;
+    t_uint16 nbItemLeftQueue_u16;
     t_uint8 nbMsgToTreat_u8 = (t_uint8)0;
     t_sFMKFDCAN_RxItemBuffer RxItemBuffer_s;
     t_sFMKFDCAN_NodeInfo * nodeInfos_ps = NULL;
@@ -1219,17 +1219,17 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 }
             }
 
-            LIBQUEUE_GetSizeLeft(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &nbItemLeftQueue_u8);
+            LIBQUEUE_GetSizeLeft(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &nbItemLeftQueue_u16);
             
-            if(nbItemLeftQueue_u8 < nbMsgToTreat_u8)
+            if(nbItemLeftQueue_u16 < nbMsgToTreat_u8)
             {
                 nodeInfos_ps->Flag_s.ErrorDetected_b = (t_bool)TRUE;
                 nodeInfos_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_SWRX_FIFO;
                 FMKCPU_GetTick(&nodeInfos_ps->lastErrorCb_u32);
-                ASSERT((t_uint16)nbItemLeftQueue_u8);
+                ASSERT((t_uint16)nbItemLeftQueue_u16);
 
                 //---- put a maximum of element ----//
-                nbMsgToTreat_u8 = nbItemLeftQueue_u8;
+                nbMsgToTreat_u8 = (t_uint8)nbItemLeftQueue_u16;
             }
             for(LLI_u8 = (t_uint8)0; 
             (LLI_u8 < nbMsgToTreat_u8) 
@@ -1864,7 +1864,7 @@ static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node
     t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
     t_sFMKFDCAN_TxItemBuffer SoftTxItem_s;
     HAL_StatusTypeDef bspRet_e;
-    t_uint8 TxQueueSize_u8 = (t_uint8)0;
+    t_uint16 TxQueueSize_u16 = (t_uint16)0;
     t_uint8 msgProcessed_u8 = (t_uint8)0;
     t_uint32 bspFifoLvl_u32 = (t_uint32)0;
 
@@ -1877,10 +1877,10 @@ static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node
         Ret_e = RC_OK;
         nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_node_e]);
 
-        LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u8);
+        LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u16);
 
         //---------Process messages from the queue, respecting the maximum limit per interrupt---------//                        
-        while ((TxQueueSize_u8  > (t_uint8)0) 
+        while ((TxQueueSize_u16 > (t_uint16)0) 
             && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT)
             && (Ret_e == RC_OK))
         {
@@ -1918,12 +1918,12 @@ static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node
                 //---------Increment processed message count---------//
                 msgProcessed_u8++;
                 //---------Update the queue size---------//
-                LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u8);
+                LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u16);
             }
         }
 
         //---------If the queue is empty, update the flag---------//
-        if (TxQueueSize_u8 == 0)
+        if (TxQueueSize_u16 == (t_uint16)0)
         {                                                    
             nodeInfo_ps->Flag_s.TxQueuePending_b = (t_bool)False;
         }
@@ -1942,7 +1942,7 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
     t_sFMKFDCAN_RxItemBuffer SoftRxItem_s;
     t_sFMKFDCAN_RxItemEvent rxItemEvnt_s;
     t_uint8 idxSubscription_u8 = (t_uint8)0;
-    t_uint8 RxQueueSize_u8 = (t_uint8)0;
+    t_uint16 RxQueueSize_u16 = (t_uint16)0;
     t_uint8 msgProcessed_u8 = (t_uint8)0;
 
     if(f_node_e >= FMKFDCAN_NODE_NB)
@@ -1953,9 +1953,9 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
     {
         Ret_e = RC_OK;
         nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_node_e]);
-        LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u8);
+        LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u16);
 
-        while ((RxQueueSize_u8  > (t_uint8)0) 
+        while ((RxQueueSize_u16 > (t_uint16)0) 
             && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT)
             && (Ret_e == RC_OK))
         {
@@ -1994,9 +1994,9 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
             //---- update Rx Queue size ----//
             msgProcessed_u8++;
             //---------Update the queue size---------//
-            LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u8);
+            LIBQUEUE_GetActualSize(&nodeInfo_ps->RxSoftQueue_s, &RxQueueSize_u16);
         }
-        if(RxQueueSize_u8 == (t_uint8)0)
+        if(RxQueueSize_u16 == (t_uint16)0)
         {
             nodeInfo_ps->Flag_s.RxQueuePending_b = (t_bool)FALSE;
         }
