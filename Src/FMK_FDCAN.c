@@ -1218,6 +1218,11 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                     break;
                 }
             }
+            else 
+            {
+                //---- Unknown behaviour ----//
+                ASSERT((t_uint16)0);
+            }
 
             LIBQUEUE_GetSizeLeft(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &nbItemLeftQueue_u16);
             
@@ -1508,6 +1513,15 @@ static void s_FMKFDCAN_BspErrorEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                     break;
                 case HAL_FDCAN_ERROR_PROTOCOL_ARBT:
                     g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_PROTOCOL_ARBT;
+                    FMKSRL_LOG("[CAN] Abort protocol arb error: PSR=0x%08lX LEC=%lu DLEC=%lu ACT=%lu EP=%lu EW=%lu BO=%lu PXE=%lu\r\n",
+                               g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_LEC) >> FDCAN_PSR_LEC_Pos,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_DLEC) >> FDCAN_PSR_DLEC_Pos,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_ACT) >> FDCAN_PSR_ACT_Pos,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_EP) >> FDCAN_PSR_EP_Pos,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_EW) >> FDCAN_PSR_EW_Pos,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_BO) >> FDCAN_PSR_BO_Pos,
+                               (g_NodeInfo_as[idxNode_u8].bspNode_s.Instance->PSR & FDCAN_PSR_PXE) >> FDCAN_PSR_PXE_Pos);
                     break;
                 case HAL_FDCAN_ERROR_PROTOCOL_DATA:
                     g_NodeInfo_as[idxNode_u8].nodeHealth_e = FMKFDCAN_NODE_STATE_PROTOCOL_DATA;
@@ -1628,7 +1642,7 @@ static t_eReturnCode s_FMKFDCAN_UserCallbackMngmt(  t_eFMKFDCAN_NodeList f_Node_
                 (subInfo_ps->itemId_s.Identifier_u32 & subInfo_ps->maskId_u32)
                 )
             {
-                nodeInfo_ps->userSubInfo_pas[idxUserRgstr_u8].rcvItem_cb(   f_Node_e, 
+                    nodeInfo_ps->userSubInfo_pas[idxUserRgstr_u8].rcvItem_cb(   f_Node_e, 
                                                                             *f_RxItemEvnt_ps, 
                                                                             nodeInfo_ps->nodeHealth_e);
             }
@@ -1659,11 +1673,27 @@ static t_eReturnCode s_FMKFDCAN_SetNodeFilters(void)
     {
         if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)True)
         {
+            /* Explicitly accept non-matching frames in FIFO0 to avoid relying on
+             * the peripheral reset default global filter configuration. */
+            bspRet_e = HAL_FDCAN_ConfigGlobalFilter(&g_NodeInfo_as[idxNode_u8].bspNode_s,
+                                                    FDCAN_ACCEPT_IN_RX_FIFO1,
+                                                    FDCAN_ACCEPT_IN_RX_FIFO1,
+                                                    FDCAN_FILTER_REMOTE,
+                                                    FDCAN_FILTER_REMOTE);
+            if(bspRet_e != HAL_OK)
+            {
+                Ret_e = RC_ERROR_WRONG_RESULT;
+            }
+        }
+        if((Ret_e == RC_OK)
+        && (g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)True))
+        {
             bspFilter_s.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
             bspRet_e = HAL_FDCAN_ConfigFilter(&g_NodeInfo_as[idxNode_u8].bspNode_s, &bspFilter_s);
             if(bspRet_e == HAL_OK)
             {
                 bspFilter_s.FilterConfig = FDCAN_FILTER_TO_RXFIFO1;
+                bspFilter_s.FilterIndex = 1U;
                 bspRet_e = HAL_FDCAN_ConfigFilter(&g_NodeInfo_as[idxNode_u8].bspNode_s, &bspFilter_s);
             }
         }
