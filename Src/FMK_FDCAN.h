@@ -227,6 +227,22 @@ typedef struct
     */
     t_eReturnCode FMKFDCAN_SetState(t_eCyclicModState f_State_e);
     /**
+    *	@brief      Configure The Initiation of the Hardware
+    *	@note       Set the pin, Set the bsp Init Strucuture, 
+    *               Set the hardware clock, set the Interruption Enabling
+    *               Call FDCAN_Init and configure Fifo Mode.\n
+    *
+    *	@param[in]  f_Node_e     : The Node where the RxMsg is Pending -> enum value from @ref t_eFMKFDCAN_NodeList
+    *	@param[in]  f_NodeCfg_s  : software init structure @ref t_sFMKFDCAN_DrvNodeCfg
+    *	 
+    *  @retval RC_OK                             @ref RC_OK
+    *  @retval RC_ERROR_PARAM_INVALID            @ref RC_ERROR_PARAM_INVALID
+    *  @retval RC_ERROR_PTR_NULL                 @ref RC_ERROR_PTR_NULL
+    *  @retval RC_ERROR_NOT_SUPPORTED            @ref RC_ERROR_NOT_SUPPORTED
+    *
+    */
+    t_eReturnCode FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s);
+    /**
     *	@brief      Configure a RxItem to be received.\n
     *	@note       This Function is used for registration to received a message CAN.\n
     *               If a Can message is received on the node f_Node_e, and the identifier 

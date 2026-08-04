@@ -21,13 +21,13 @@
 
 #include "FMK_HAL/FMK_CPU/Src/FMK_CPU.h"
 #include "FMK_CFG/FMKCFG_ConfigFiles/FMKFDCAN_ConfigPrivate.h"
+#include "FMK_CFG/FMKCFG_ConfigSpecific/FMKFDCAN_ConfigSpecific.h"
 #include "FMK_HAL/FMK_IO/Src/FMK_IO.h"
 #include "APP_CTRL/APP_SYS/Src/APP_SYS.h"
 #include "APP_CTRL/APP_SDM/Src/APP_SDM.h"
 
 #include "Library/QUEUE/Src/LIBQueue.h"
 #include "Library/SafeMem/SafeMem.h"
-#include "stm32g4xx_hal.h"
 
 // ********************************************************************
 // *                      Defines
@@ -150,6 +150,9 @@ t_sFMKFDCAN_UserItemSub g_UserRegisterEvnt_as[FMKFDCAN_NODE_NB][FMKFDCAN_RX_NUM_
 
 /**< Hardware Interrupt Management */
 t_eFMKFDCAN_BspStatusCb g_BspCbMngmt_ae[FMKFDCAN_NODE_NB][FMKFDCAN_BSP_CB_NB];
+
+/**< Flag to know if fast task is already regsitered */
+static t_bool g_isFastaskRegisterd_b = FALSE;
 //********************************************************************************
 //                      Local functions - Prototypes
 //*********************************************************************************
@@ -159,32 +162,23 @@ t_eFMKFDCAN_BspStatusCb g_BspCbMngmt_ae[FMKFDCAN_NODE_NB][FMKFDCAN_BSP_CB_NB];
  */
 static t_eReturnCode s_FMKFDCAN_ConfigurationState(void);
 /**
- *	@brief      Activate Interrupt line 
+ *	@brief      Activate/Start a Node.\n
+ *	@note       Set and Start node filter and call bsp start API.\n
  *
- */
-static t_eReturnCode s_FMKFDCAN_PreOperational(void);
-/**
- *	@brief      Perform Cyclic Operation
- *
- */
-static t_eReturnCode s_FMKFDCAN_Operational(void);
-/**
-*	@brief      Configure The Initiation of the Hardware
-*	@note       Set the pin, Set the bsp Init Strucuture, 
-*               Set the hardware clock, set the Interruption Enabling
-*               Call FDCAN_Init and configure Fifo Mode.\n
-*
- *	@param[in]  f_Node_e     : The Node where the RxMsg is Pending -> enum value from @ref t_eFMKFDCAN_NodeList
- *	@param[in]  f_NodeCfg_s  : software init structure @ref t_sFMKFDCAN_DrvNodeCfg
+ *	@param[in]  f_Node_e : node identifier @ref t_eFMKFDCAN_NodeList
  *	 
  *  @retval RC_OK                             @ref RC_OK
  *  @retval RC_ERROR_PARAM_INVALID            @ref RC_ERROR_PARAM_INVALID
  *  @retval RC_ERROR_PTR_NULL                 @ref RC_ERROR_PTR_NULL
  *  @retval RC_ERROR_NOT_SUPPORTED            @ref RC_ERROR_NOT_SUPPORTED
-*
-*/
-static t_eReturnCode s_FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s);
-
+ *
+ */
+static t_eReturnCode s_FMKFDCAN_ActivateNode(t_eFMKFDCAN_NodeList f_Node_e);
+/**
+ *	@brief      Perform Cyclic Operation
+ *
+ */
+static t_eReturnCode s_FMKFDCAN_Operational(void);
 /**
  *	@brief      Set the initiation of the Node.\n
  *	@note       We extract from software confgiuration the bsp configuration
@@ -200,6 +194,10 @@ static t_eReturnCode s_FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMK
  *
  */
 static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s);
+static t_eReturnCode s_FMKFDCAN_SetKernelClock(t_bool f_isAfterBspInit_b,
+                                               t_eFMKFDCAN_NodeList f_Node_e,
+                                               FDCAN_HandleTypeDef *f_bspInit_ps,
+                                               t_eFMKFDCAN_ClockKernelDiv f_clockDivider_e);
 /**
  *	@brief      Function called when Bsp Tx Interruption occured.\n
  *	@note       In this function, We firstly see if the flag TxItemPending is raised.\n
@@ -647,6 +645,8 @@ t_eReturnCode FMKFDCAN_Init(void)
             }
         }
     }
+
+    g_isFastaskRegisterd_b = FALSE;
     
     return Ret_e;
 }
@@ -671,11 +671,7 @@ t_eReturnCode FMKFDCAN_Cyclic(void)
         }
         case STATE_CYCLIC_PREOPE:
         {
-            Ret_e = s_FMKFDCAN_PreOperational();
-            if(Ret_e  == RC_OK)
-            {
-                g_FmkCan_ModState_e = STATE_CYCLIC_OPE;
-            }
+            g_FmkCan_ModState_e = STATE_CYCLIC_OPE;
             break;
         }
         case STATE_CYCLIC_OPE:
@@ -729,6 +725,96 @@ t_eReturnCode FMKFDCAN_SetState(t_eCyclicModState f_State_e)
     return RC_OK;
 }
 
+/***********************
+* FMKFDCAN_InitDriver
+************************/
+t_eReturnCode FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s)
+{
+    t_eReturnCode Ret_e;
+    HAL_StatusTypeDef bspRet_e = HAL_OK;
+
+    if(f_Node_e >= FMKFDCAN_NODE_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else if(g_NodeInfo_as[f_Node_e].isNodeConfigured_b == TRUE)
+    {
+        Ret_e = RC_ERROR_ALREADY_CONFIGURED;
+    }
+    else
+    {
+        //----------Configure Pin Init----------//
+        Ret_e = FMKIO_Set_ComCanCfg((t_eFMKIO_ComSigCan)f_Node_e);
+        //----------Copy Bsp Init from Config/----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetBspNodeInit(&g_NodeInfo_as[f_Node_e].bspNode_s, f_NodeCfg_s);
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetKernelClock((t_bool)False,
+                                          f_Node_e,
+                                          &g_NodeInfo_as[f_Node_e].bspNode_s,
+                                          f_NodeCfg_s.clockDivider_e);
+        }
+        //----------Set hardware clock RCC----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKCPU_Set_HwClock(g_NodeInfo_as[f_Node_e].c_Clock_e, FMKCPU_CLOCKPORT_OPE_ENABLE);
+        }
+        //----------set enable the Interruption----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine1_e, FMKCPU_NVIC_OPE_ENABLE);
+            if(Ret_e == RC_OK)
+            {
+                Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine2_e, FMKCPU_NVIC_OPE_ENABLE);
+            }
+        }
+        //----------Call Bsp Init for FDCAN----------//
+        if(Ret_e == RC_OK)
+        {
+            bspRet_e = HAL_FDCAN_Init(&g_NodeInfo_as[f_Node_e].bspNode_s);
+
+            if(bspRet_e != HAL_OK)
+            {
+                Ret_e = RC_ERROR_WRONG_RESULT;
+            }
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetKernelClock((t_bool)True,
+                                          f_Node_e,
+                                          &g_NodeInfo_as[f_Node_e].bspNode_s,
+                                          f_NodeCfg_s.clockDivider_e);
+        }
+        //----------Set Hardware FIFO mode for FDCAN----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetHwFifoOpeMode(f_Node_e, f_NodeCfg_s.FifoMode_e);
+        }
+        if(Ret_e == RC_OK)
+        {
+            //---- add fast task callback ----//
+            if(g_isFastaskRegisterd_b == FALSE)
+            {
+                Ret_e = APPSYS_AddFastTask( APPSYS_MODULE_FMK_CAN, 
+                                            s_FMKFDCAN_FastTask);
+                if(Ret_e == RC_OK)
+                {
+                    g_isFastaskRegisterd_b = TRUE;
+                }
+            }
+        }
+        if(Ret_e == RC_OK)
+        {
+            g_NodeInfo_as[f_Node_e].isNodeConfigured_b = TRUE;
+        }
+    }
+    
+    return Ret_e;
+}
+
 /*********************************
 * FMKFDCAN_ConfigureRxItemEvent
 *********************************/
@@ -750,7 +836,7 @@ t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFM
         {
             Ret_e = RC_ERROR_INSTANCE_NOT_INITIALIZED;
         }
-        if(nodeInfo_ps->nbSubscriptions_u8 >= FMKFDCAN_RX_NUM_REGISTRATION_EVNT)
+        else if(nodeInfo_ps->nbSubscriptions_u8 >= FMKFDCAN_RX_NUM_REGISTRATION_EVNT)
         {
             Ret_e = RC_ERROR_LIMIT_REACHED;
         }
@@ -868,164 +954,83 @@ FDCAN_HandleTypeDef * FMKFDCAN_PRIVATE_GetHandleTypeDef(t_eFMKFDCAN_NodeList f_N
 //********************************************************************************
 //                      Local functions - Implementation
 //********************************************************************************
-/***********************
-* s_FMKFDCAN_InitDriver
-************************/
-static t_eReturnCode s_FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s)
-{
-    t_eReturnCode Ret_e = RC_OK;
-    HAL_StatusTypeDef bspRet_e = HAL_OK;
-
-    if(f_Node_e >= FMKFDCAN_NODE_NB)
-    {
-        Ret_e = RC_ERROR_PARAM_INVALID;
-    }
-    if(Ret_e == RC_OK)
-    {
-        //----------Configure Pin Init----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = FMKIO_Set_ComCanCfg((t_eFMKIO_ComSigCan)f_Node_e);
-        }
-        //----------Copy Bsp Init from Config/----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = s_FMKFDCAN_SetBspNodeInit(&g_NodeInfo_as[f_Node_e].bspNode_s, f_NodeCfg_s);
-        }
-        //----------Set hardware clock RCC----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = FMKCPU_Set_HwClock(g_NodeInfo_as[f_Node_e].c_Clock_e, FMKCPU_CLOCKPORT_OPE_ENABLE);
-        }
-        //----------set enable the Interruption----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine1_e, FMKCPU_NVIC_OPE_ENABLE);
-            if(Ret_e == RC_OK)
-            {
-                Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine2_e, FMKCPU_NVIC_OPE_ENABLE);
-            }
-        }
-        //----------Call Bsp Init for FDCAN----------//
-        if(Ret_e == RC_OK)
-        {
-            bspRet_e = HAL_FDCAN_Init(&g_NodeInfo_as[f_Node_e].bspNode_s);
-        }
-        //----------Set Hardware FIFO mode for FDCAN----------//
-        if(bspRet_e == HAL_OK)
-        {
-            Ret_e = s_FMKFDCAN_SetHwFifoOpeMode(f_Node_e, f_NodeCfg_s.FifoMode_e);
-        }
-    }
-    if(bspRet_e != HAL_OK)
-    {
-        Ret_e = RC_ERROR_WRONG_RESULT;
-    }
-    else 
-    {
-        g_NodeInfo_as[f_Node_e].isNodeConfigured_b = (t_bool)True;
-    }
-    
-    return Ret_e;
-}
 
 /*********************************
 * s_FMKFDCAN_ConfigurationState
 *********************************/
 static t_eReturnCode s_FMKFDCAN_ConfigurationState(void)
 {
-    t_eReturnCode Ret_e = RC_OK;
-    t_uint8 idxNode_u8 = (t_uint8)0;
-    t_sFMKFDCAN_DrvNodeCfg nodeCfg_s;
-    t_uint8 idxBspNodeCfg_u8;
-    for (idxNode_u8 = (t_uint8)0 ; (idxNode_u8 < FMKFDCAN_NODE_NB) && (Ret_e == RC_OK) ; idxNode_u8++)
-    { 
-        //-----------------Init driver if Node is used ----------------//
-        if(c_FmkCan_IsNodeActive[idxNode_u8] == (t_bool)True)
-        {
-            idxBspNodeCfg_u8 = c_FmkCan_NodeCfg_ae[idxNode_u8];
-
-            //-----------------Copy FdCan Configuration ----------------//
-            nodeCfg_s.clockDivider_e = c_FmkCan_BspNodeCfgList_as[idxBspNodeCfg_u8].clockDivider_e;
-            nodeCfg_s.DataBaudrate_e = c_FmkCan_BspNodeCfgList_as[idxBspNodeCfg_u8].DataBaudrate_e;
-            nodeCfg_s.FifoMode_e = c_FmkCan_BspNodeCfgList_as[idxBspNodeCfg_u8].FifoMode_e;
-            nodeCfg_s.FrameBaudrate_e = c_FmkCan_BspNodeCfgList_as[idxBspNodeCfg_u8].FrameBaudrate_e;
-            nodeCfg_s.ProtocolUse_e = c_FmkCan_BspNodeCfgList_as[idxBspNodeCfg_u8].ProtocolUse_e;
-            nodeCfg_s.QueueType_e = c_FmkCan_BspNodeCfgList_as[idxBspNodeCfg_u8].QueueType_e;
-            
-            //-----------------Call Init Driver Managment----------------//
-            Ret_e = s_FMKFDCAN_InitDriver((t_eFMKFDCAN_NodeList)idxNode_u8, nodeCfg_s);
-            
-            //---- add fast task callback ----//
-            if(Ret_e == RC_OK)
-            {
-                Ret_e = APPSYS_AddFastTask( APPSYS_MODULE_FMK_CAN, 
-                                            s_FMKFDCAN_FastTask);
-            }
-        }
-    }
-
-    return Ret_e;
+    return RC_OK;
 }
 /*********************************
-* s_FMKFDCAN_PreOperational
+* s_FMKFDCAN_ActivateNode
 *********************************/
-static t_eReturnCode s_FMKFDCAN_PreOperational(void)
+static t_eReturnCode s_FMKFDCAN_ActivateNode(t_eFMKFDCAN_NodeList f_Node_e)
 {
     t_eReturnCode Ret_e = RC_OK;
     HAL_StatusTypeDef bspRet_e = HAL_OK;
-    t_uint8 idxNode_u8;
-    //----------Activate Notification that are always ON----------//
-    for(idxNode_u8 = (t_uint8)0; idxNode_u8 < FMKFDCAN_NODE_NB ; idxNode_u8++)
-    {
-        if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)True)
-        {
-                  
-            //---------- CallBack for every FIFO_0 Event----------//
-            Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(idxNode_u8,
-                                                    FMKFDCAN_BSP_RX_CB_FIFO_0,
-                                                    FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
-            if(Ret_e == RC_OK)
-            {
-                //---------- CallBack for every FIFO_1 Event----------//
-                Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(idxNode_u8,
-                                                        FMKFDCAN_BSP_RX_CB_FIFO_1,
-                                                        FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+    t_sFMKFDCAN_NodeInfo * nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)NULL;
 
-            }
-            if(Ret_e == RC_OK)
-            {
-                //---------- CallBack for every Tx Send A Msg Event----------//
-                Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(idxNode_u8,
-                                                        FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE,
-                                                        FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
-            }
-            if(Ret_e == RC_OK)
-            {
-                //---------- CallBack for Protocol Error----------//
-                Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(idxNode_u8,
-                                                        FMKFDCAN_BSP_CB_PROTOCOL_ERR,
-                                                        FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
-            }
-            if(Ret_e == RC_OK)
-            {
-                Ret_e = s_FMKFDCAN_SetNodeFilters();
-            }
-            if(Ret_e == RC_OK)
-            {
-                bspRet_e = HAL_FDCAN_Start(&g_NodeInfo_as[idxNode_u8].bspNode_s);
-            }
-            if(bspRet_e != HAL_OK)
-            {
-                Ret_e = RC_ERROR_WRONG_RESULT;
-            }
+    if(f_Node_e >= FMKFDCAN_NODE_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else
+    {
+        nodeInfo_ps = &g_NodeInfo_as[f_Node_e];
+    }
+    if((Ret_e == RC_OK) && (nodeInfo_ps->isNodeConfigured_b == FALSE))
+    {
+        Ret_e = RC_ERROR_INSTANCE_NOT_INITIALIZED;
+    }
+    if(Ret_e == RC_OK)
+    {        
+        //---------- CallBack for every FIFO_0 Event----------//
+        Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(f_Node_e,
+                                                FMKFDCAN_BSP_RX_CB_FIFO_0,
+                                                FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+        if(Ret_e == RC_OK)
+        {
+            //---------- CallBack for every FIFO_1 Event----------//
+            Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(f_Node_e,
+                                                    FMKFDCAN_BSP_RX_CB_FIFO_1,
+                                                    FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+
+        }
+        if(Ret_e == RC_OK)
+        {
+            //---------- CallBack for every Tx Send A Msg Event----------//
+            Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(f_Node_e,
+                                                    FMKFDCAN_BSP_TX_CB_BUFFER_COMPLETE,
+                                                    FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+        }
+        if(Ret_e == RC_OK)
+        {
+            //---------- CallBack for Protocol Error----------//
+            Ret_e = s_FMKFDCAN_SetHwBspCallbackStatus(f_Node_e,
+                                                    FMKFDCAN_BSP_CB_PROTOCOL_ERR,
+                                                    FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetNodeFilters();
+        }
+        if(Ret_e == RC_OK)
+        {
+            bspRet_e = HAL_FDCAN_Start(&nodeInfo_ps->bspNode_s);
+        }
+        if(bspRet_e != HAL_OK)
+        {
+            Ret_e = RC_ERROR_WRONG_RESULT;
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = APPSYS_SetFastTaskState(APPSYS_MODULE_FMK_CAN,
+                                            APPSYS_FAST_TASK_ENABLE);
             if(Ret_e == RC_OK)
             {
                 //---------- Update Flag----------//
-                g_NodeInfo_as[idxNode_u8].isNodeActive_b = (t_bool)True;
-
-                Ret_e = APPSYS_SetFastTaskState(APPSYS_MODULE_FMK_CAN,
-                                                APPSYS_FAST_TASK_ENABLE);
+                nodeInfo_ps->isNodeActive_b = (t_bool)TRUE;
             }
         }
     }
@@ -1047,8 +1052,8 @@ static t_eReturnCode s_FMKFDCAN_Operational(void)
     {
         if(g_NodeInfo_as[idxNode_u8].isNodeConfigured_b == (t_bool)TRUE)
         {
-            nodeInfo_ps = &g_NodeInfo_as[idxNode_u8];
             FMKCPU_GetTick(&currenTime_u32);
+            nodeInfo_ps = &g_NodeInfo_as[idxNode_u8];
             // check flags for this Node
             if(nodeInfo_ps->Flag_s.ErrorDetected_b == (t_bool)TRUE)
             {
@@ -1074,8 +1079,14 @@ static t_eReturnCode s_FMKFDCAN_Operational(void)
                                             idxNode_u8,
                                             (t_uint16)0);
                 }
-                
-                
+            }
+            else
+            {
+                //--- check that node is configured but not active yet with no errors ----//
+                if(nodeInfo_ps->isNodeActive_b == FALSE)
+                {
+                    Ret_e = s_FMKFDCAN_ActivateNode((t_eFMKFDCAN_NodeList)idxNode_u8);
+                }
             }
         }
     }
@@ -1303,10 +1314,12 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
     t_eReturnCode Ret_e = RC_OK;
     t_eFMKFDCAN_Baudrate dataBaudrate_e;
     t_eFMKFDCAN_Baudrate frameBaudrate_e;
+    t_sFMKFDCAN_BaudrateCfg nominalBaudrateCfg_s = {0};
+    t_sFMKFDCAN_BaudrateCfg dataBaudrateCfg_s = {0};
     t_uint32 bspTxQueueType_u32 = 0;
     t_uint32 bspClkDivider_u32 = 0;
-    t_uint32 nominalPrescaler_u32 = 0;
-    t_uint32 dataPrescaler_u32 = 0;
+    t_uint32 kernelClockHz_u32 = 0;
+
     if(f_bspInit_ps == (FDCAN_HandleTypeDef *)NULL)
     {
         Ret_e = RC_ERROR_PTR_NULL;
@@ -1325,7 +1338,6 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
         if(Ret_e == RC_OK)
         {
             //-------------------Global configuration Init -------------------//
-            f_bspInit_ps->Init.ClockDivider = (t_uint32)bspClkDivider_u32;
             f_bspInit_ps->Init.Mode = FMKFDCAN_NODE_MODE;
             f_bspInit_ps->Init.AutoRetransmission = ENABLE;
             f_bspInit_ps->Init.TransmitPause = DISABLE;
@@ -1333,36 +1345,30 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
             //--------------One per FIFO to allowed every ID----------//
             f_bspInit_ps->Init.StdFiltersNbr = (t_uint32)0; 
             f_bspInit_ps->Init.ExtFiltersNbr = (t_uint32)2;
+            Ret_e = FMKFDCAN_Set_BspNodeSpecificInit(f_bspInit_ps, bspClkDivider_u32);
 
             f_bspInit_ps->Init.TxFifoQueueMode = bspTxQueueType_u32;
-
-            //-------------------Init for nominal baudrate-------------------//
-            /* Information 
-            *   Here in c_FmkCan_BspBaudrateCfg_as, the configuration has been made 
-            *   for Clock Cfg (128Mhz), if user wants to divided this clock, in order to 
-            *   obtain the right baudrate, we have to multiply the the value of the enum.\n
-            *   In consequence no matter the clock divider value, the baudrate will always be 
-            *   good 
-            *   
-            *   For Instance if the divider clock is Divided by FDCAN_CLOCK_DIV10, we multiply 
-            *   the Nominal and Data precaler by FMKFDCAN_CLOCK_KERNEL_DIV10 (10)
-            * 
-            *   For record 
-            *                                         Fclock (FMKFDCAN_SRC_CLOCK) (/ x)
-            *  Baudrate =                        -----------------------------------------
-            *                                   (Prescaler (* x)) * (SyncSeg + TimSeg1 + TimSeg2)
-            */
-            nominalPrescaler_u32 = (t_uint32)(c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].prescaler_u16 *
-                                        (t_uint32)f_NodeCfg_s.clockDivider_e);
-
-            //-------------------copy information -------------------//            
-            f_bspInit_ps->Init.NominalPrescaler = nominalPrescaler_u32;
-            f_bspInit_ps->Init.NominalSyncJumpWidth = c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].syncSeg_u8;
-            f_bspInit_ps->Init.NominalTimeSeg1 = c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].timeSeg1_u8;
-            f_bspInit_ps->Init.NominalTimeSeg2 = c_FmkCan_BspBaudrateCfg_as[frameBaudrate_e].timeSeg2_u8;
-
-            
-            //-------------------depending on complete configuration-------------------// 
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKFDCAN_GetKernelClockHz(f_NodeCfg_s.clockDivider_e, &kernelClockHz_u32);
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKFDCAN_ComputeBitTiming(kernelClockHz_u32,
+                                              frameBaudrate_e,
+                                              &nominalBaudrateCfg_s);
+        }
+        if(Ret_e == RC_OK)
+        {
+            f_bspInit_ps->Init.NominalPrescaler = nominalBaudrateCfg_s.prescaler_u16;
+            f_bspInit_ps->Init.NominalSyncJumpWidth = nominalBaudrateCfg_s.syncSeg_u8;
+            f_bspInit_ps->Init.NominalTimeSeg1 = nominalBaudrateCfg_s.timeSeg1_u8;
+            f_bspInit_ps->Init.NominalTimeSeg2 = nominalBaudrateCfg_s.timeSeg2_u8;
+        }
+        if(Ret_e == RC_OK)
+        {
+            //-------------------depending on complete configuration-------------------//
             switch(f_NodeCfg_s.ProtocolUse_e)
             {
                 case FMKFDCAN_PROTOCOL_CAN2_0B:
@@ -1375,13 +1381,16 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
 
                 case FMKFDCAN_PROTOCOL_FDCAN_BRS:
                     f_bspInit_ps->Init.FrameFormat = FDCAN_FRAME_FD_BRS;
-                    //-------------------Init for Data Baudrate-------------//
-                    dataPrescaler_u32 =  (t_uint32)(c_FmkCan_BspBaudrateCfg_as[dataBaudrate_e].prescaler_u16 * 
-                                            f_NodeCfg_s.clockDivider_e);
-                    f_bspInit_ps->Init.DataPrescaler = dataPrescaler_u32;
-                    f_bspInit_ps->Init.DataSyncJumpWidth = c_FmkCan_BspBaudrateCfg_as[dataBaudrate_e].syncSeg_u8;
-                    f_bspInit_ps->Init.DataTimeSeg1 = c_FmkCan_BspBaudrateCfg_as[dataBaudrate_e].timeSeg1_u8;
-                    f_bspInit_ps->Init.DataTimeSeg2 = c_FmkCan_BspBaudrateCfg_as[dataBaudrate_e].timeSeg2_u8;
+                    Ret_e = FMKFDCAN_ComputeBitTiming(kernelClockHz_u32,
+                                                      dataBaudrate_e,
+                                                      &dataBaudrateCfg_s);
+                    if(Ret_e == RC_OK)
+                    {
+                        f_bspInit_ps->Init.DataPrescaler = dataBaudrateCfg_s.prescaler_u16;
+                        f_bspInit_ps->Init.DataSyncJumpWidth = dataBaudrateCfg_s.syncSeg_u8;
+                        f_bspInit_ps->Init.DataTimeSeg1 = dataBaudrateCfg_s.timeSeg1_u8;
+                        f_bspInit_ps->Init.DataTimeSeg2 = dataBaudrateCfg_s.timeSeg2_u8;
+                    }
                     break;
 
                 case  FMKFDCAN_PROTOCOL_FDCAN_NO_BRS:
@@ -1396,10 +1405,13 @@ static t_eReturnCode s_FMKFDCAN_SetBspNodeInit(FDCAN_HandleTypeDef *f_bspInit_ps
                     Ret_e = RC_ERROR_NOT_SUPPORTED;
             }
         }
+        if(Ret_e == RC_OK)
+        {
+
+        }
     }
     return Ret_e;
 }
-
 /*********************************
 * s_FMKFDCAN_CopyBspRxItem
 *********************************/
@@ -2513,6 +2525,40 @@ static t_eReturnCode s_FMKFDCAN_GetBspFifoOpeMode(t_eFMKFDCAN_FifoOpeMode f_fifo
         }
     }
     
+    return Ret_e;
+}
+
+/*****************************
+* s_FMKFDCAN_SetKernelClock
+*****************************/
+static t_eReturnCode s_FMKFDCAN_SetKernelClock(t_bool f_isAfterBspInit_b,
+                                               t_eFMKFDCAN_NodeList f_Node_e,
+                                               FDCAN_HandleTypeDef *f_bspInit_ps,
+                                               t_eFMKFDCAN_ClockKernelDiv f_clockDivider_e)
+{
+    t_eReturnCode Ret_e = RC_OK;
+    t_uint32 bspClkDivider_u32 = 0U;
+
+    if(f_bspInit_ps == (FDCAN_HandleTypeDef *)NULL)
+    {
+        Ret_e = RC_ERROR_PTR_NULL;
+    }
+    if(Ret_e == RC_OK)
+    {
+        Ret_e = s_FMKFDCAN_GetClockKernelDivider(f_clockDivider_e, &bspClkDivider_u32);
+    }
+    if(Ret_e == RC_OK)
+    {
+        Ret_e = FMKFDCAN_Set_KernelClockCfg(
+                    f_isAfterBspInit_b,
+                    f_bspInit_ps,
+                    f_clockDivider_e,
+                    bspClkDivider_u32,
+                    g_NodeInfo_as[FMKFDCAN_NODE_1].isNodeConfigured_b,
+                    &g_NodeInfo_as[FMKFDCAN_NODE_1].bspNode_s);
+    }
+
+    (void)f_Node_e;
     return Ret_e;
 }
 
