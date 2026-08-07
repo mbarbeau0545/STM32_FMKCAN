@@ -913,7 +913,7 @@ t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxI
                 if(f_TxItemCfg_s.CanMsg_s.Dlc_e > FMKFDCAN_TX_BUFFER_DATA_SIZE)
                 {
                     Ret_e = RC_WARNING_LIMIT_REACHED;
-                    ASSERT((t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
+                    ASSERT((t_sint32)f_TxItemCfg_s.CanMsg_s.Dlc_e);
                 }
                 else 
                 {
@@ -947,7 +947,7 @@ FDCAN_HandleTypeDef * FMKFDCAN_PRIVATE_GetHandleTypeDef(t_eFMKFDCAN_NodeList f_N
 {
     if(g_NodeInfo_as[f_Node_e].isNodeConfigured_b == (t_bool)False)
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
     }
     return (FDCAN_HandleTypeDef *)(&g_NodeInfo_as[f_Node_e].bspNode_s);
 }
@@ -1232,7 +1232,7 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
             else 
             {
                 //---- Unknown behaviour ----//
-                ASSERT((t_uint16)0);
+                ASSERT((t_sint32)0);
             }
 
             LIBQUEUE_GetSizeLeft(&g_NodeInfo_as[idxNode_u8].RxSoftQueue_s, &nbItemLeftQueue_u16);
@@ -1242,7 +1242,7 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                 nodeInfos_ps->Flag_s.ErrorDetected_b = (t_bool)TRUE;
                 nodeInfos_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_SWRX_FIFO;
                 FMKCPU_GetTick(&nodeInfos_ps->lastErrorCb_u32);
-                ASSERT((t_uint16)nbItemLeftQueue_u16);
+                ASSERT((t_sint32)nbItemLeftQueue_u16);
 
                 //---- put a maximum of element ----//
                 nbMsgToTreat_u8 = (t_uint8)nbItemLeftQueue_u16;
@@ -1267,7 +1267,7 @@ static void s_FMKFDCAN_BspRxEventCb(FDCAN_HandleTypeDef *f_bspInfo_ps,
                     nodeInfos_ps->Flag_s.readOpe_b = (t_bool)FALSE;
                     if(Ret_e != RC_OK)
                     {
-                        ASSERT((t_uint16)Ret_e);
+                        ASSERT((t_sint32)Ret_e);
                     }
                 }
             }
@@ -1630,7 +1630,7 @@ static t_eReturnCode s_FMKFDCAN_UserCallbackMngmt(  t_eFMKFDCAN_NodeList f_Node_
     if((f_Node_e >=  FMKFDCAN_NODE_NB)
     || (f_RxItemEvnt_ps == (t_sFMKFDCAN_RxItemEvent *)NULL))
     {
-        ASSERT((t_uint16)0);
+        ASSERT((t_sint32)0);
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
     if(Ret_e == RC_OK)
@@ -1866,7 +1866,7 @@ static void s_FMKFDCAN_FastTask(void)
 
                 if(Ret_e < RC_OK)
                 {
-                    ASSERT((t_uint16)Ret_e);
+                    ASSERT((t_sint32)Ret_e);
                 }
             }
             if(nodeInfo_ps->Flag_s.RxQueuePending_b == (t_bool)TRUE)
@@ -1888,7 +1888,7 @@ static void s_FMKFDCAN_FastTask(void)
                                                         FMKFDCAN_CALLBACK_STATUS_ACTIVATE);
                 if(Ret_e < RC_OK)
                 {
-                    ASSERT((t_uint16)Ret_e);
+                    ASSERT((t_sint32)Ret_e);
                 }
             }
         }
@@ -1939,7 +1939,7 @@ static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node
                 if (Ret_e != RC_OK)
                 {
                     //---------Exit loop on read failure---------//
-                    ASSERT((t_uint16)Ret_e);
+                    ASSERT((t_sint32)Ret_e);
                     break;
                 }
 
@@ -1983,7 +1983,6 @@ static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node
     t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
     t_sFMKFDCAN_RxItemBuffer SoftRxItem_s;
     t_sFMKFDCAN_RxItemEvent rxItemEvnt_s;
-    t_uint8 idxSubscription_u8 = (t_uint8)0;
     t_uint16 RxQueueSize_u16 = (t_uint16)0;
     t_uint8 msgProcessed_u8 = (t_uint8)0;
 
