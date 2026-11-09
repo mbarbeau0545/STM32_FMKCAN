@@ -27,6 +27,7 @@
 #include "APP_CTRL/APP_SDM/Src/APP_SDM.h"
 
 #include "Library/QUEUE/Src/LIBQueue.h"
+#include "Library/FIFO/Src/LIBFifo.h"
 #include "Library/SafeMem/SafeMem.h"
 
 // ********************************************************************
@@ -112,7 +113,7 @@ typedef struct
 typedef struct __t_sFMKFDCAN_NodeInfo
 {
     FDCAN_HandleTypeDef bspNode_s;                          /**< BSP handle for FDCAN peripheral. */
-    t_sLIBQUEUE_QueueCore TxSoftQueue_s;                    /**< Transmission Queue management*/
+    t_sLIBFIFO_Core TxSoftQueue_s;                    /**< Transmission Queue management*/
     t_sLIBQUEUE_QueueCore RxSoftQueue_s;                    /**< Transmission Queue management*/
     t_sFMKFDCAN_UserItemSub * userSubInfo_pas;              /**< Pointor to user register information */
     t_sFMKFDCAN_TxMsgDiag msgDiag_s;
@@ -142,6 +143,10 @@ typedef struct __t_sFMKFDCAN_NodeInfo
 // *                      Variables
 // ********************************************************************
 static t_eCyclicModState g_FmkCan_ModState_e = STATE_CYCLIC_CFG;
+/// @brief Next node considered during cyclic configuration.
+static t_uint8 g_StartupNode_u8;
+/// @brief Next configured node considered during preoperational activation.
+static t_uint8 g_ActivationNode_u8;
 /* Store information about node*/
 t_sFMKFDCAN_NodeInfo g_NodeInfo_as[FMKFDCAN_NODE_NB];
 
@@ -161,6 +166,25 @@ static t_bool g_isFastaskRegisterd_b = FALSE;
  *
  */
 static t_eReturnCode s_FMKFDCAN_ConfigurationState(void);
+/**
+ * @brief Initialize one node from the private startup policy, only during cyclic CFG processing.
+ * @param[in] f_Node_e Selected node.
+ * @param[in] f_NodeCfg_ps Immutable driver configuration, borrowed only during this call.
+ * @retval RC_OK Node configured.
+ * @retval RC_ERROR_PTR_NULL Null configuration.
+ * @retval RC_ERROR_PARAM_INVALID Invalid node or settings.
+ * @retval RC_ERROR_ALREADY_CONFIGURED Node already initialized.
+ * @retval RC_ERROR_WRONG_RESULT Hardware initialization failed.
+ */
+static t_eReturnCode s_FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e,
+                                          const t_sFMKFDCAN_DrvNodeCfg * f_NodeCfg_ps);
+/** @brief Activate at most one configured node in PREOPE.
+ * @retval RC_OK All enabled nodes active. @retval RC_WARNING_PENDING Activation still progressing.
+ * @retval RC_ERROR_WRONG_RESULT Hardware activation failed.
+ */
+static t_eReturnCode s_FMKFDCAN_PreOperational(void);
+/** @brief Hold suspended or failed states without touching hardware. @retval RC_WARNING_NO_OPERATION Held. */
+static t_eReturnCode s_FMKFDCAN_HoldState(void);
 /**
  *	@brief      Activate/Start a Node.\n
  *	@note       Set and Start node filter and call bsp start API.\n
@@ -383,14 +407,14 @@ static t_eReturnCode s_FMKFDCAN_SetHwFifoOpeMode(t_eFMKFDCAN_NodeList f_Node_e ,
  */
 static void s_FMKFDCAN_FastTask(void);
 /**
- *	@brief      Module FDCAN Fast Task, call every 5 ms.\n
- *	@note       This function deal with Rx Software Fifo, take several elements
- *              from the Fifo, interpret it and call user with registration mapping
- *              If there is some Tx Fifo item, we will try to put it into Hardware Fifo.\n
- *              
- *	 
+ * @brief Submit owned descriptors from the existing module fast task after node activation.
+ * @note Single TX consumer. HAL_BUSY or a full hardware FIFO retains the oldest frame and pending flag.
+ * @param[in] f_Node_e Configured node index selected by the fast task.
+ * @retval RC_OK No pending work or frames copied into hardware message RAM.
+ * @retval RC_WARNING_BUSY Hardware FIFO full or HAL busy; retry on the next fast task.
+ * @retval RC_ERROR_WRONG_RESULT HAL error; descriptor retained and node diagnostic flagged.
  */
-static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e);
+static t_eReturnCode s_FMKFDCAN_ProcessTxQueue(t_eFMKFDCAN_NodeList f_Node_e);
 /**
  *	@brief      Module FDCAN Fast Task, call every 5 ms.\n
  *	@note       This function deal with Rx Software Fifo, take several elements
@@ -569,7 +593,7 @@ t_eReturnCode FMKFDCAN_Init(void)
     t_uint8 idxNode_u8 = (t_uint8)0;
     t_uint8 LLI_u8 = (t_uint8)0;
 
-    t_sLIBQUEUE_QueueCfg TxBufferCfg_s;
+    t_sLIBFIFO_Cfg TxBufferCfg_s;
     t_sLIBQUEUE_QueueCfg RxBufferCfg_s;
     //-----------------For Every Node in FDCAN----------------//
     for (idxNode_u8 = (t_uint8)0 ; (idxNode_u8 < FMKFDCAN_NODE_NB) && (Ret_e == RC_OK) ; idxNode_u8++)
@@ -632,13 +656,12 @@ t_eReturnCode FMKFDCAN_Init(void)
         if(Ret_e == RC_OK)
         {
             TxBufferCfg_s.bufferHead_pv = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferStartAddress_pas;
-            TxBufferCfg_s.actualSize_u16 = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferSize_u16,
-            TxBufferCfg_s.elementSize_u16 = sizeof(t_sFMKFDCAN_TxItemBuffer),
-            TxBufferCfg_s.enableOverwrite_b = False,
+            TxBufferCfg_s.elementNb_u16 = c_FmkFdcan_NodeCfg_as[idxNode_u8].txBufferSize_u16;
+            TxBufferCfg_s.elementSize_u16 = sizeof(t_sFMKFDCAN_TxItemBuffer);
 
-            Ret_e = LIBQUEUE_Create(&g_NodeInfo_as[idxNode_u8].TxSoftQueue_s, TxBufferCfg_s);
+            Ret_e = LIBFIFO_Create(&g_NodeInfo_as[idxNode_u8].TxSoftQueue_s, TxBufferCfg_s);
             if((Ret_e == RC_ERROR_PARAM_INVALID)
-            && (TxBufferCfg_s.actualSize_u16 == (t_uint8)0))
+            && (TxBufferCfg_s.elementNb_u16 == (t_uint8)0))
             {
                 //---- normal 'cause node is not beeing used ----//
                 Ret_e = RC_OK;
@@ -646,19 +669,24 @@ t_eReturnCode FMKFDCAN_Init(void)
         }
     }
 
+    //---- 1- Arm cyclic node startup without accessing hardware ----//
     g_isFastaskRegisterd_b = FALSE;
+    g_StartupNode_u8 = 0U;
+    g_ActivationNode_u8 = 0U;
+    g_FmkCan_ModState_e = STATE_CYCLIC_CFG;
     
     return Ret_e;
 }
 
-/***********************
-* FMKFDCAN_Cyclic
-************************/
+/*********************************
+ * FMKFDCAN_Cyclic
+ *********************************/
 t_eReturnCode FMKFDCAN_Cyclic(void)
 {
     t_eReturnCode Ret_e = RC_OK;
 
-    switch (g_FmkCan_ModState_e)
+    //---- 1- Progress one public lifecycle step; pending results preserve the current state ----//
+    switch(g_FmkCan_ModState_e)
     {
         case STATE_CYCLIC_CFG:
         {
@@ -667,11 +695,23 @@ t_eReturnCode FMKFDCAN_Cyclic(void)
             {
                 g_FmkCan_ModState_e = STATE_CYCLIC_PREOPE;
             }
+            else if(Ret_e < RC_OK)
+            {
+                g_FmkCan_ModState_e = STATE_CYCLIC_ERROR;
+            }
             break;
         }
         case STATE_CYCLIC_PREOPE:
         {
-            g_FmkCan_ModState_e = STATE_CYCLIC_OPE;
+            Ret_e = s_FMKFDCAN_PreOperational();
+            if(Ret_e == RC_OK)
+            {
+                g_FmkCan_ModState_e = STATE_CYCLIC_OPE;
+            }
+            else if(Ret_e < RC_OK)
+            {
+                g_FmkCan_ModState_e = STATE_CYCLIC_ERROR;
+            }
             break;
         }
         case STATE_CYCLIC_OPE:
@@ -683,16 +723,13 @@ t_eReturnCode FMKFDCAN_Cyclic(void)
             }
             break;
         }
-        
-        case STATE_CYCLIC_ERROR:
+        default:
         {
+            Ret_e = s_FMKFDCAN_HoldState();
             break;
         }
-        case STATE_CYCLIC_BUSY:
-        default:
-            Ret_e = RC_OK;
-            break;
     }
+
     return Ret_e;
 }
 
@@ -725,136 +762,42 @@ t_eReturnCode FMKFDCAN_SetState(t_eCyclicModState f_State_e)
     return RC_OK;
 }
 
-/***********************
-* FMKFDCAN_InitDriver
-************************/
-t_eReturnCode FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s)
-{
-    t_eReturnCode Ret_e;
-    HAL_StatusTypeDef bspRet_e = HAL_OK;
-
-    if(f_Node_e >= FMKFDCAN_NODE_NB)
-    {
-        Ret_e = RC_ERROR_PARAM_INVALID;
-    }
-    else if(g_NodeInfo_as[f_Node_e].isNodeConfigured_b == TRUE)
-    {
-        Ret_e = RC_ERROR_ALREADY_CONFIGURED;
-    }
-    else
-    {
-        //----------Configure Pin Init----------//
-        Ret_e = FMKIO_Set_ComCanCfg((t_eFMKIO_ComSigCan)f_Node_e);
-        //----------Copy Bsp Init from Config/----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = s_FMKFDCAN_SetBspNodeInit(&g_NodeInfo_as[f_Node_e].bspNode_s, f_NodeCfg_s);
-        }
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = s_FMKFDCAN_SetKernelClock((t_bool)False,
-                                          f_Node_e,
-                                          &g_NodeInfo_as[f_Node_e].bspNode_s,
-                                          f_NodeCfg_s.clockDivider_e);
-        }
-        //----------Set hardware clock RCC----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = FMKCPU_Set_HwClock(g_NodeInfo_as[f_Node_e].c_Clock_e, FMKCPU_CLOCKPORT_OPE_ENABLE);
-        }
-        //----------set enable the Interruption----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine1_e, FMKCPU_NVIC_OPE_ENABLE);
-            if(Ret_e == RC_OK)
-            {
-                Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine2_e, FMKCPU_NVIC_OPE_ENABLE);
-            }
-        }
-        //----------Call Bsp Init for FDCAN----------//
-        if(Ret_e == RC_OK)
-        {
-            bspRet_e = HAL_FDCAN_Init(&g_NodeInfo_as[f_Node_e].bspNode_s);
-
-            if(bspRet_e != HAL_OK)
-            {
-                Ret_e = RC_ERROR_WRONG_RESULT;
-            }
-        }
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = s_FMKFDCAN_SetKernelClock((t_bool)True,
-                                          f_Node_e,
-                                          &g_NodeInfo_as[f_Node_e].bspNode_s,
-                                          f_NodeCfg_s.clockDivider_e);
-        }
-        //----------Set Hardware FIFO mode for FDCAN----------//
-        if(Ret_e == RC_OK)
-        {
-            Ret_e = s_FMKFDCAN_SetHwFifoOpeMode(f_Node_e, f_NodeCfg_s.FifoMode_e);
-        }
-        if(Ret_e == RC_OK)
-        {
-            //---- add fast task callback ----//
-            if(g_isFastaskRegisterd_b == FALSE)
-            {
-                Ret_e = APPSYS_AddFastTask( APPSYS_MODULE_FMK_CAN, 
-                                            s_FMKFDCAN_FastTask);
-                if(Ret_e == RC_OK)
-                {
-                    g_isFastaskRegisterd_b = TRUE;
-                }
-            }
-        }
-        if(Ret_e == RC_OK)
-        {
-            g_NodeInfo_as[f_Node_e].isNodeConfigured_b = TRUE;
-        }
-    }
-    
-    return Ret_e;
-}
-
 /*********************************
 * FMKFDCAN_ConfigureRxItemEvent
 *********************************/
-t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_RxItemEventCfg f_RxItemCfg_s)
+t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e,
+                                            t_sFMKFDCAN_RxItemEventCfg f_RxItemCfg_s)
 {
-    t_eReturnCode Ret_e;
-    t_uint8 idxCounter_u8 = (t_uint8)0;
-    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
+    t_eReturnCode Ret_e = RC_OK;
 
-    if((f_Node_e >= FMKFDCAN_NODE_NB)
-    || (f_RxItemCfg_s.callback_cb == (t_cbFMKFDCAN_RcvItem *)NULL_FUNCTION))
+    //---- 1- Validate subscription metadata independently of driver readiness ----//
+    if(((t_uint32)f_Node_e >= FMKFDCAN_NODE_NB)
+    || (f_RxItemCfg_s.callback_cb == NULL_FUNCTION)
+    || ((t_uint32)f_RxItemCfg_s.ItemId_s.IdType_e >= FMKFDCAN_IDTYPE_NB)
+    || ((t_uint32)f_RxItemCfg_s.ItemId_s.FramePurpose_e >= FMKFDCAN_FRAME_PURPOSE_NB))
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
-    else 
-    {   
-        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_Node_e]);
-        if(nodeInfo_ps->isNodeConfigured_b == (t_bool)False)
+    else
+    {
+        //---- 2- Publish the subscription atomically without accessing the HAL ----//
+        t_uint32 key_u32 = FMKFDCAN_EnterQueueCritical_PRIVATE_();
+        t_sFMKFDCAN_NodeInfo * info_ps = &g_NodeInfo_as[f_Node_e];
+        if(info_ps->nbSubscriptions_u8 >= FMKFDCAN_RX_NUM_REGISTRATION_EVNT)
         {
-            Ret_e = RC_ERROR_INSTANCE_NOT_INITIALIZED;
-        }
-        else if(nodeInfo_ps->nbSubscriptions_u8 >= FMKFDCAN_RX_NUM_REGISTRATION_EVNT)
-        {
-            Ret_e = RC_ERROR_LIMIT_REACHED;
+            Ret_e = RC_WARNING_BUSY;
         }
         else
         {
-            Ret_e = RC_OK;            
-            //-------------------Copy Information into Register Node Variable-------------------//
-            idxCounter_u8 = nodeInfo_ps->nbSubscriptions_u8;
-            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].itemId_s.Identifier_u32 = f_RxItemCfg_s.ItemId_s.Identifier_u32;
-            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].itemId_s.FramePurpose_e = f_RxItemCfg_s.ItemId_s.FramePurpose_e;
-            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].itemId_s.IdType_e = f_RxItemCfg_s.ItemId_s.IdType_e;
-            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].maskId_u32 = f_RxItemCfg_s.maskId_u32;
-            nodeInfo_ps->userSubInfo_pas[idxCounter_u8].rcvItem_cb = f_RxItemCfg_s.callback_cb;
-
-            //-------------------update countor Register-------------------//
-            nodeInfo_ps->nbSubscriptions_u8 += (t_uint8)1;
+            t_sFMKFDCAN_UserItemSub * slot_ps = &info_ps->userSubInfo_pas[info_ps->nbSubscriptions_u8];
+            slot_ps->itemId_s = f_RxItemCfg_s.ItemId_s;
+            slot_ps->maskId_u32 = f_RxItemCfg_s.maskId_u32;
+            slot_ps->rcvItem_cb = f_RxItemCfg_s.callback_cb;
+            info_ps->nbSubscriptions_u8++;
         }
+        FMKFDCAN_ExitQueueCritical_PRIVATE_(key_u32);
     }
+
     return Ret_e;
 }
 
@@ -863,80 +806,47 @@ t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFM
 *********************************/
 t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItem f_TxItemCfg_s)
 {
-    t_eReturnCode Ret_e;
-    HAL_StatusTypeDef bspRet_e = HAL_OK;
-    t_sFMKFDCAN_TxItemBuffer SoTxitem_s;
-    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
-    t_uint32 fifoLevel_u32 = 0;
+    t_eReturnCode Ret_e = RC_OK;
 
-
-    if(f_Node_e >= FMKFDCAN_NODE_NB)
+    //---- 1- Validate the node and payload before touching per-node storage ----//
+    if((t_uint32)f_Node_e >= FMKFDCAN_NODE_NB)
     {
         Ret_e = RC_ERROR_PARAM_INVALID;
     }
-    if(g_FmkCan_ModState_e != STATE_CYCLIC_OPE)
+    else if((f_TxItemCfg_s.CanMsg_s.data_pu8 == NULL) && (f_TxItemCfg_s.CanMsg_s.Dlc_e != FMKFDCAN_DLC_0))
+    {
+        Ret_e = RC_ERROR_PTR_NULL;
+    }
+    else if((t_uint32)f_TxItemCfg_s.CanMsg_s.Dlc_e > FMKFDCAN_TX_BUFFER_DATA_SIZE)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else if(c_FmkFdcan_NodeCfg_as[f_Node_e].txBufferSize_u16 == 0U)
     {
         Ret_e = RC_WARNING_BUSY;
     }
-    else
+    if(Ret_e == RC_OK)
     {
-        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo * )(&g_NodeInfo_as[f_Node_e]);
-        //------------------- Copy Bsp TxItem in BspTxItem-------------------//
-        Ret_e = s_FMKFDCAN_CopyBspTxItem(&f_TxItemCfg_s, &SoTxitem_s.bspTxItem_s);
+        //---- 2- Copy the complete frame into an owned descriptor before returning ----//
+        t_sFMKFDCAN_TxItemBuffer item_s = {0};
+        Ret_e = s_FMKFDCAN_CopyBspTxItem(&f_TxItemCfg_s, &item_s.bspTxItem_s);
+        if((Ret_e == RC_OK) && (f_TxItemCfg_s.CanMsg_s.Dlc_e != FMKFDCAN_DLC_0))
+        {
+            Ret_e = SafeMem_memcpy(item_s.data_ua8, f_TxItemCfg_s.CanMsg_s.data_pu8,
+                                   (t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
+        }
         if(Ret_e == RC_OK)
         {
-            fifoLevel_u32 = HAL_FDCAN_GetTxFifoFreeLevel(&nodeInfo_ps->bspNode_s);
-
-            // if the hardware buffer is not full, add directly the message 
-            // else put it in the software buffer only if there <= DLC_8 Bytes
-            // and activate IT notification to send msg from HAL Callback
-            if(fifoLevel_u32 > (t_uint32)0)
+            t_uint32 key_u32 = FMKFDCAN_EnterQueueCritical_PRIVATE_();
+            Ret_e = LIBFIFO_Push(&g_NodeInfo_as[f_Node_e].TxSoftQueue_s, &item_s, sizeof(item_s));
+            if(Ret_e == RC_OK)
             {
-                bspRet_e = HAL_FDCAN_AddMessageToTxFifoQ(&nodeInfo_ps->bspNode_s,
-                                                        &SoTxitem_s.bspTxItem_s,
-                                                        f_TxItemCfg_s.CanMsg_s.data_pu8);
-                if(bspRet_e != HAL_OK)
-                {
-                    Ret_e = RC_WARNING_WRONG_RESULT;
-                }
-                else 
-                {
-                    nodeInfo_ps->msgDiag_s.txMsgSend_u32++;
-                }
+                g_NodeInfo_as[f_Node_e].Flag_s.TxQueuePending_b = TRUE;
             }
-            //-----if hardware fifo Tx full, put in in software fifo if dlc <= 8-----//
-            else
-            {
-                //----------copy structure into SoTxitem_s----------//
-                //-----Copy data Into Software Buffer Structre,
-                //      if size fifo element is enough-----//
-                if(f_TxItemCfg_s.CanMsg_s.Dlc_e > FMKFDCAN_TX_BUFFER_DATA_SIZE)
-                {
-                    Ret_e = RC_WARNING_LIMIT_REACHED;
-                    ASSERT((t_sint32)f_TxItemCfg_s.CanMsg_s.Dlc_e);
-                }
-                else 
-                {
-                    Ret_e = SafeMem_memcpy( SoTxitem_s.data_ua8, 
-                                            f_TxItemCfg_s.CanMsg_s.data_pu8,
-                                            (t_uint16)f_TxItemCfg_s.CanMsg_s.Dlc_e);
-                    if(Ret_e == RC_OK)
-                    {
-                        //----------Write Into Software Queue----------//
-                        Ret_e = LIBQUEUE_WriteElement(  &nodeInfo_ps->TxSoftQueue_s, 
-                                                        &SoTxitem_s, 
-                                                        sizeof(t_sFMKFDCAN_TxItemBuffer));
-                    }
-                    //----------update flag Tx Item to send/----------//
-                    if(Ret_e == RC_OK)
-                    {
-                        nodeInfo_ps->Flag_s.TxQueuePending_b = True;
-                    }
-                }
-            }
+            FMKFDCAN_ExitQueueCritical_PRIVATE_(key_u32);
         }
-        
     }
+
     return Ret_e;
 }
 
@@ -956,11 +866,178 @@ FDCAN_HandleTypeDef * FMKFDCAN_PRIVATE_GetHandleTypeDef(t_eFMKFDCAN_NodeList f_N
 //********************************************************************************
 
 /*********************************
+ * s_FMKFDCAN_InitDriver
+ *********************************/
+static t_eReturnCode s_FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e,
+                                          const t_sFMKFDCAN_DrvNodeCfg * f_NodeCfg_ps)
+{
+    t_eReturnCode Ret_e;
+    HAL_StatusTypeDef bspRet_e = HAL_OK;
+
+    //---- 1- Validate the selected private node policy ----//
+    if(f_NodeCfg_ps == NULL)
+    {
+        Ret_e = RC_ERROR_PTR_NULL;
+    }
+    else if((t_uint32)f_Node_e >= (t_uint32)FMKFDCAN_NODE_NB)
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else if(g_NodeInfo_as[f_Node_e].isNodeConfigured_b == TRUE)
+    {
+        Ret_e = RC_ERROR_ALREADY_CONFIGURED;
+    }
+    else if((c_FmkFdcan_NodeCfg_as[f_Node_e].rxBufferSize_u16 == 0U)
+         || (c_FmkFdcan_NodeCfg_as[f_Node_e].txBufferSize_u16 == 0U)
+         || (f_NodeCfg_ps->clockDivider_e == 0U)
+         || ((t_uint32)f_NodeCfg_ps->clockDivider_e >= (t_uint32)FMKFDCAN_CLOCK_KERNEL_DIV_NB)
+         || ((f_NodeCfg_ps->clockDivider_e != FMKFDCAN_CLOCK_KERNEL_DIV1)
+          && (((t_uint8)f_NodeCfg_ps->clockDivider_e % 2U) != 0U))
+         || ((t_uint32)f_NodeCfg_ps->ProtocolUse_e >= (t_uint32)FMKFDCAN_PROTOCOL_FDCAN_NB)
+         || ((t_uint32)f_NodeCfg_ps->FrameBaudrate_e >= (t_uint32)FMKFDCAN_FRAME_BAUDRATE_NB)
+         || ((t_uint32)f_NodeCfg_ps->DataBaudrate_e >= (t_uint32)FMKFDCAN_FRAME_BAUDRATE_NB)
+         || ((t_uint32)f_NodeCfg_ps->QueueType_e >= (t_uint32)FMKFDCAN_HWQUEUE_TYPE_NB)
+         || ((t_uint32)f_NodeCfg_ps->FifoMode_e >= (t_uint32)FMKFDCAN_FIFO_OPEMODE_NB))
+    {
+        Ret_e = RC_ERROR_PARAM_INVALID;
+    }
+    else
+    {
+        //---- 2- Configure board pins, timings, clocks and interrupt lines ----//
+        Ret_e = FMKIO_Set_ComCanCfg((t_eFMKIO_ComSigCan)f_Node_e);
+        //----------Copy Bsp Init from Config/----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetBspNodeInit(&g_NodeInfo_as[f_Node_e].bspNode_s, *f_NodeCfg_ps);
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetKernelClock((t_bool)False,
+                                          f_Node_e,
+                                          &g_NodeInfo_as[f_Node_e].bspNode_s,
+                                          f_NodeCfg_ps->clockDivider_e);
+        }
+        //----------Set hardware clock RCC----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKCPU_Set_HwClock(g_NodeInfo_as[f_Node_e].c_Clock_e, FMKCPU_CLOCKPORT_OPE_ENABLE);
+        }
+        //----------set enable the Interruption----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine1_e, FMKCPU_NVIC_OPE_ENABLE);
+            if(Ret_e == RC_OK)
+            {
+                Ret_e = FMKCPU_Set_NVICState(g_NodeInfo_as[f_Node_e].c_IrqnLine2_e, FMKCPU_NVIC_OPE_ENABLE);
+            }
+        }
+        //---- 3- Initialize the peripheral and its receive FIFO policy ----//
+        if(Ret_e == RC_OK)
+        {
+            bspRet_e = HAL_FDCAN_Init(&g_NodeInfo_as[f_Node_e].bspNode_s);
+
+            if(bspRet_e != HAL_OK)
+            {
+                Ret_e = RC_ERROR_WRONG_RESULT;
+            }
+        }
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetKernelClock((t_bool)True,
+                                          f_Node_e,
+                                          &g_NodeInfo_as[f_Node_e].bspNode_s,
+                                          f_NodeCfg_ps->clockDivider_e);
+        }
+        //----------Set Hardware FIFO mode for FDCAN----------//
+        if(Ret_e == RC_OK)
+        {
+            Ret_e = s_FMKFDCAN_SetHwFifoOpeMode(f_Node_e, f_NodeCfg_ps->FifoMode_e);
+        }
+        if(Ret_e == RC_OK)
+        {
+            //---- 4- Register the shared fast task once for all enabled nodes ----//
+            if(g_isFastaskRegisterd_b == FALSE)
+            {
+                Ret_e = APPSYS_AddFastTask(APPSYS_MODULE_FMK_CAN, s_FMKFDCAN_FastTask);
+                if(Ret_e == RC_OK)
+                {
+                    g_isFastaskRegisterd_b = TRUE;
+                }
+            }
+        }
+        if(Ret_e == RC_OK)
+        {
+            g_NodeInfo_as[f_Node_e].isNodeConfigured_b = TRUE;
+        }
+    }
+
+    return Ret_e;
+}
+
+/*********************************
 * s_FMKFDCAN_ConfigurationState
 *********************************/
 static t_eReturnCode s_FMKFDCAN_ConfigurationState(void)
 {
-    return RC_OK;
+    t_eReturnCode Ret_e = RC_OK;
+
+    //---- 1- Apply at most one enabled private node configuration per cyclic call ----//
+    if(g_StartupNode_u8 < FMKFDCAN_NODE_NB)
+    {
+        const t_sFMKFDCAN_NodeStartupCfg * startup_ps = &c_FmkFdcan_NodeStartupCfg_as[g_StartupNode_u8];
+        if(startup_ps->initialize_b == TRUE)
+        {
+            Ret_e = s_FMKFDCAN_InitDriver((t_eFMKFDCAN_NodeList)g_StartupNode_u8, &startup_ps->driverCfg_s);
+        }
+        if(Ret_e == RC_OK)
+        {
+            g_StartupNode_u8++;
+            if(g_StartupNode_u8 < FMKFDCAN_NODE_NB)
+            {
+                Ret_e = RC_WARNING_PENDING;
+            }
+        }
+    }
+
+    return Ret_e;
+}
+
+/*********************************
+ * s_FMKFDCAN_PreOperational
+ *********************************/
+static t_eReturnCode s_FMKFDCAN_PreOperational(void)
+{
+    t_eReturnCode Ret_e = RC_OK;
+
+    //---- 1- Start only configured nodes and retain disabled nodes without hardware access ----//
+    if(g_ActivationNode_u8 < FMKFDCAN_NODE_NB)
+    {
+        if(g_NodeInfo_as[g_ActivationNode_u8].isNodeConfigured_b == TRUE)
+        {
+            Ret_e = s_FMKFDCAN_ActivateNode((t_eFMKFDCAN_NodeList)g_ActivationNode_u8);
+        }
+        if(Ret_e == RC_OK)
+        {
+            g_ActivationNode_u8++;
+            if(g_ActivationNode_u8 < FMKFDCAN_NODE_NB)
+            {
+                Ret_e = RC_WARNING_PENDING;
+            }
+        }
+    }
+
+    return Ret_e;
+}
+
+/*********************************
+ * s_FMKFDCAN_HoldState
+ *********************************/
+static t_eReturnCode s_FMKFDCAN_HoldState(void)
+{
+    //---- 1- Preserve a suspended or failed lifecycle without hardware operations ----//
+    t_eReturnCode Ret_e = RC_WARNING_NO_OPERATION;
+
+    return Ret_e;
 }
 /*********************************
 * s_FMKFDCAN_ActivateNode
@@ -1851,22 +1928,21 @@ static void s_FMKFDCAN_FastTask(void)
     t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
 
     //---- loop on every node ----//
-    for(idxNode_u8 = (t_uint8)0 ; idxNode_u8 < FMKFDCAN_NODE_NB ; idxNode_u8++)
+    for(idxNode_u8 = (t_uint8)0 ; (idxNode_u8 < FMKFDCAN_NODE_NB) && (g_FmkCan_ModState_e == STATE_CYCLIC_OPE); idxNode_u8++)
     {
         nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[idxNode_u8]);
 
         if(nodeInfo_ps->isNodeActive_b == (t_bool)TRUE)
         {
-            if((nodeInfo_ps->Flag_s.TxQueuePending_b == (t_bool)TRUE)
-            || (nodeInfo_ps->Flag_s.TxFramePrioPending_b == (t_bool)TRUE))
+            //---- 1- Submit copied TX descriptors only after node activation ----//
+            if(nodeInfo_ps->Flag_s.TxQueuePending_b == TRUE)
             {
-                //--- maybe deactivate Tx Callback while performing on queue 
-                //      we not doing anything on it so for now do nothing -----//
-                Ret_e = s_FMKFDCAN_FastTask_TxFifoMngmt((t_eFMKFDCAN_NodeList)idxNode_u8);
-
+                Ret_e = s_FMKFDCAN_ProcessTxQueue((t_eFMKFDCAN_NodeList)idxNode_u8);
                 if(Ret_e < RC_OK)
                 {
-                    ASSERT((t_sint32)Ret_e);
+                    nodeInfo_ps->Flag_s.ErrorDetected_b = TRUE;
+                    nodeInfo_ps->nodeHealth_e = FMKFDCAN_NODE_STATE_ERR_HWTX_FIFO;
+                    FMKCPU_GetTick(&nodeInfo_ps->lastErrorCb_u32);
                 }
             }
             if(nodeInfo_ps->Flag_s.RxQueuePending_b == (t_bool)TRUE)
@@ -1898,76 +1974,56 @@ static void s_FMKFDCAN_FastTask(void)
 }
 
 /*********************************
-* s_FMKFDCAN_FastTask_TxFifoMngmt
+* s_FMKFDCAN_ProcessTxQueue
 **********************************/
-static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e)
+static t_eReturnCode s_FMKFDCAN_ProcessTxQueue(t_eFMKFDCAN_NodeList f_Node_e)
 {
-    t_eReturnCode Ret_e;
-    t_sFMKFDCAN_NodeInfo * nodeInfo_ps;
-    t_sFMKFDCAN_TxItemBuffer SoftTxItem_s;
-    HAL_StatusTypeDef bspRet_e;
-    t_uint16 TxQueueSize_u16 = (t_uint16)0;
-    t_uint8 msgProcessed_u8 = (t_uint8)0;
-    t_uint32 bspFifoLvl_u32 = (t_uint32)0;
+    t_eReturnCode Ret_e = RC_OK;
+    t_sFMKFDCAN_NodeInfo * info_ps = &g_NodeInfo_as[f_Node_e];
 
-    if(f_node_e >= FMKFDCAN_NODE_NB)
+    //---- 1- Leave queued requests untouched until this node is configured and active ----//
+    if((info_ps->isNodeConfigured_b == TRUE) && (info_ps->isNodeActive_b == TRUE))
     {
-        Ret_e = RC_ERROR_PARAM_INVALID;
-    }
-    else
-    {
-        Ret_e = RC_OK;
-        nodeInfo_ps = (t_sFMKFDCAN_NodeInfo *)(&g_NodeInfo_as[f_node_e]);
-
-        LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u16);
-
-        //---------Process messages from the queue, respecting the maximum limit per interrupt---------//                        
-        while ((TxQueueSize_u16 > (t_uint16)0) 
-            && (msgProcessed_u8 < (t_uint8)FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT)
-            && (Ret_e == RC_OK))
+        for(t_uint8 processed_u8 = 0U; processed_u8 < FMKFDCAN_MAX_TX_ITEM_SEND_PER_IT; processed_u8++)
         {
-            bspFifoLvl_u32 = HAL_FDCAN_GetTxFifoFreeLevel(&nodeInfo_ps->bspNode_s);
-
-            if(bspFifoLvl_u32 == (t_uint32)0)
+            t_sFMKFDCAN_TxItemBuffer item_s = {0};
+            t_uint32 key_u32 = FMKFDCAN_EnterQueueCritical_PRIVATE_();
+            Ret_e = LIBFIFO_Peek(&info_ps->TxSoftQueue_s, &item_s, sizeof(item_s));
+            FMKFDCAN_ExitQueueCritical_PRIVATE_(key_u32);
+            if(Ret_e != RC_OK)
             {
+                if(Ret_e == RC_WARNING_NO_OPERATION)
+                {
+                    Ret_e = RC_OK;
+                }
                 break;
             }
-            else
+            //---- 2- Retain the oldest frame when the hardware FIFO is full or the HAL is busy ----//
+            t_uint32 free_u32 = HAL_FDCAN_GetTxFifoFreeLevel(&info_ps->bspNode_s);
+            if(free_u32 == 0U)
             {
-                //---------Read an element from the queue---------//
-                Ret_e = LIBQUEUE_ReadElement(&nodeInfo_ps->TxSoftQueue_s, &SoftTxItem_s, sizeof(SoftTxItem_s));
-                if (Ret_e != RC_OK)
-                {
-                    //---------Exit loop on read failure---------//
-                    ASSERT((t_sint32)Ret_e);
-                    break;
-                }
-
-                //---------Attempt to send the message to the hardware buffer---------//
-                bspRet_e = HAL_FDCAN_AddMessageToTxFifoQ(&nodeInfo_ps->bspNode_s,
-                                                        &SoftTxItem_s.bspTxItem_s,
-                                                        SoftTxItem_s.data_ua8);
-                if (bspRet_e != HAL_OK)
+                Ret_e = RC_WARNING_BUSY;
+                break;
+            }
+            HAL_StatusTypeDef HalStatus_e = HAL_FDCAN_AddMessageToTxFifoQ(&info_ps->bspNode_s,
+                                                                          &item_s.bspTxItem_s, item_s.data_ua8);
+            if(HalStatus_e != HAL_OK)
+            {
+                Ret_e = RC_WARNING_BUSY;
+                if(HalStatus_e != HAL_BUSY)
                 {
                     Ret_e = RC_ERROR_WRONG_RESULT;
-                    break;
                 }
-                else 
-                {
-                    nodeInfo_ps->msgDiag_s.txMsgSend_u32++;
-                }
-
-                //---------Increment processed message count---------//
-                msgProcessed_u8++;
-                //---------Update the queue size---------//
-                LIBQUEUE_GetActualSize(&nodeInfo_ps->TxSoftQueue_s, &TxQueueSize_u16);
+                break;
             }
-        }
-
-        //---------If the queue is empty, update the flag---------//
-        if (TxQueueSize_u16 == (t_uint16)0)
-        {                                                    
-            nodeInfo_ps->Flag_s.TxQueuePending_b = (t_bool)False;
+            //---- 3- Release only after the HAL copies the frame into its message RAM ----//
+            key_u32 = FMKFDCAN_EnterQueueCritical_PRIVATE_();
+            Ret_e = LIBFIFO_Discard(&info_ps->TxSoftQueue_s);
+            t_uint16 count_u16 = 0U;
+            (void)LIBFIFO_GetCount(&info_ps->TxSoftQueue_s, &count_u16);
+            info_ps->Flag_s.TxQueuePending_b = (count_u16 != 0U);
+            FMKFDCAN_ExitQueueCritical_PRIVATE_(key_u32);
+            info_ps->msgDiag_s.txMsgSend_u32++;
         }
     }
 
@@ -1975,7 +2031,7 @@ static t_eReturnCode s_FMKFDCAN_FastTask_TxFifoMngmt(t_eFMKFDCAN_NodeList f_node
 }
 
 /**********************************
-* s_FMKFDCAN_FastTask_TxFifoMngmt
+* s_FMKFDCAN_ProcessTxQueue
 ***********************************/
 static t_eReturnCode s_FMKFDCAN_FastTask_RxFifoMngmt(t_eFMKFDCAN_NodeList f_node_e)
 {

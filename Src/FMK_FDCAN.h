@@ -193,19 +193,23 @@ typedef struct
     //                      Public functions - Prototypes
     //********************************************************************************
     /**
-    *
-    *	@brief      Perform all Init action for this module.\n
-    *	@note       Set to default value all globals structure that
-    *                store information for each signals.\n
-    *
-    */
+     * @brief Reset module-owned storage and arm private node startup.
+     * @note Call once during system initialization. No GPIO, clock, interrupt or HAL initialization runs here.
+     *       Each node's private initialize_b flag and driverCfg_s are applied later by FMKFDCAN_Cyclic.
+     * @retval RC_OK Storage initialized and CFG armed.
+     * @retval RC_ERROR_PARAM_INVALID Invalid queue storage configuration.
+     */
     t_eReturnCode FMKFDCAN_Init(void);
     /**
-    *
-    *	@brief      Perform all Cyclic action for this module.\n
-    *	@note       
-    *
-    */
+     * @brief Progress private node configuration, activation and operational monitoring.
+     * @note CFG initializes at most one enabled node per call. PREOPE activates configured nodes.
+     *       Disabled nodes are skipped. Hardware failures enter ERROR; pending steps keep their current state.
+     * @retval RC_OK Current lifecycle stage completed.
+     * @retval RC_WARNING_PENDING More startup steps remain.
+     * @retval RC_WARNING_NO_OPERATION Module suspended or failed.
+     * @retval RC_ERROR_PARAM_INVALID Invalid enabled-node settings or missing storage resources.
+     * @retval RC_ERROR_WRONG_RESULT Hardware startup failed.
+     */
     t_eReturnCode FMKFDCAN_Cyclic(void);
     /**
     *
@@ -227,22 +231,6 @@ typedef struct
     */
     t_eReturnCode FMKFDCAN_SetState(t_eCyclicModState f_State_e);
     /**
-    *	@brief      Configure The Initiation of the Hardware
-    *	@note       Set the pin, Set the bsp Init Strucuture, 
-    *               Set the hardware clock, set the Interruption Enabling
-    *               Call FDCAN_Init and configure Fifo Mode.\n
-    *
-    *	@param[in]  f_Node_e     : The Node where the RxMsg is Pending -> enum value from @ref t_eFMKFDCAN_NodeList
-    *	@param[in]  f_NodeCfg_s  : software init structure @ref t_sFMKFDCAN_DrvNodeCfg
-    *	 
-    *  @retval RC_OK                             @ref RC_OK
-    *  @retval RC_ERROR_PARAM_INVALID            @ref RC_ERROR_PARAM_INVALID
-    *  @retval RC_ERROR_PTR_NULL                 @ref RC_ERROR_PTR_NULL
-    *  @retval RC_ERROR_NOT_SUPPORTED            @ref RC_ERROR_NOT_SUPPORTED
-    *
-    */
-    t_eReturnCode FMKFDCAN_InitDriver(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_DrvNodeCfg f_NodeCfg_s);
-    /**
     *	@brief      Configure a RxItem to be received.\n
     *	@note       This Function is used for registration to received a message CAN.\n
     *               If a Can message is received on the node f_Node_e, and the identifier 
@@ -263,6 +251,8 @@ typedef struct
     *  @retval RC_ERROR_NOT_CONFIGURED           @ref RC_ERROR_NOT_CONFIGURED
     *  @retval RC_ERROR_LIMIT_REACHED            @ref RC_ERROR_LIMIT_REACHED
     *
+    * @note RX subscriptions are copied after Init, including before node readiness.
+    * @note Disabled nodes retain subscriptions. RC_WARNING_BUSY means registration storage is full.
     */
     t_eReturnCode FMKFDCAN_ConfigureRxItemEvent(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_RxItemEventCfg f_RxItemCfg_s);
     /**
@@ -279,6 +269,9 @@ typedef struct
     *  @retval RC_WARNING_BUSY                   @ref RC_WARNING_BUSY
     *  @retval RC_WARNING_WRONG_RESULT           @ref RC_WARNING_WRONG_RESULT
     *
+    * @note RC_OK means the frame and payload were copied into bounded internal storage after Init.
+    * @note No caller pointer is retained. The module fast task submits queued frames after node activation in FIFO order.
+    * @note HAL_BUSY preserves the oldest frame. RC_WARNING_BUSY means storage is full; nothing is overwritten.
     */
     t_eReturnCode FMKFDCAN_SendTxItem(t_eFMKFDCAN_NodeList f_Node_e, t_sFMKFDCAN_TxItem f_TxItemCfg_s);
     /**

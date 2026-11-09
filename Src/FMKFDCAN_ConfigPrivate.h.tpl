@@ -22,6 +22,60 @@
     #include "./FMKCPU_ConfigPublic.h"
     #include "FMK_HAL/FMK_CAN/Src/FMK_FDCAN.h"
     #include "../FMKCFG_ConfigSpecific/FMKFDCAN_ConfigSpecific.h"
+    /// @brief Private startup policy for one FDCAN node; disabled nodes never access hardware.
+    typedef struct __t_sFMKFDCAN_NodeStartupCfg
+    {
+        t_sFMKFDCAN_DrvNodeCfg driverCfg_s; ///< Immutable driver settings applied during CFG.
+        t_bool initialize_b;                ///< TRUE initializes this node; FALSE leaves it unused.
+    } t_sFMKFDCAN_NodeStartupCfg;
+
+    /// @brief Per-node startup configuration; preserve the existing 250 kbit/s application bus.
+    static const t_sFMKFDCAN_NodeStartupCfg c_FmkFdcan_NodeStartupCfg_as[FMKFDCAN_NODE_NB] =
+    {
+        [FMKFDCAN_NODE_1] =
+        {
+            .driverCfg_s =
+            {
+                .clockDivider_e = FMKFDCAN_CLOCK_KERNEL_DIV1,
+                .ProtocolUse_e = FMKFDCAN_PROTOCOL_CAN2_0B,
+                .FrameBaudrate_e = FMKFDCAN_FRAME_BAUDRATE_250K,
+                .DataBaudrate_e = FMKFDCAN_FRAME_BAUDRATE_250K,
+                .QueueType_e = FMKFDCAN_HWQUEUE_TYPE_FIFO,
+                .FifoMode_e = FMKFDCAN_FIFO_OPEMODE_BLOCKING
+            },
+            .initialize_b = TRUE
+        },
+        [FMKFDCAN_NODE_2] =
+        {
+            .driverCfg_s =
+            {
+                .clockDivider_e = FMKFDCAN_CLOCK_KERNEL_DIV1,
+                .ProtocolUse_e = FMKFDCAN_PROTOCOL_CAN2_0B,
+                .FrameBaudrate_e = FMKFDCAN_FRAME_BAUDRATE_250K,
+                .DataBaudrate_e = FMKFDCAN_FRAME_BAUDRATE_250K,
+                .QueueType_e = FMKFDCAN_HWQUEUE_TYPE_FIFO,
+                .FifoMode_e = FMKFDCAN_FIFO_OPEMODE_BLOCKING
+            },
+            .initialize_b = FALSE
+        },
+#if defined(FMKCPU_STM32_ECU_FAMILY_G4)
+        [FMKFDCAN_NODE_3] =
+        {
+            .driverCfg_s =
+            {
+                .clockDivider_e = FMKFDCAN_CLOCK_KERNEL_DIV1,
+                .ProtocolUse_e = FMKFDCAN_PROTOCOL_CAN2_0B,
+                .FrameBaudrate_e = FMKFDCAN_FRAME_BAUDRATE_250K,
+                .DataBaudrate_e = FMKFDCAN_FRAME_BAUDRATE_250K,
+                .QueueType_e = FMKFDCAN_HWQUEUE_TYPE_FIFO,
+                .FifoMode_e = FMKFDCAN_FIFO_OPEMODE_BLOCKING
+            },
+            .initialize_b = FALSE
+        },
+#endif
+    };
+
+#if !defined(PC_SIM)
     // ********************************************************************
     // *                      Defines
     // ********************************************************************
@@ -210,13 +264,6 @@
     /* CAUTION : Automatic generated code section for Variable: End */
 
 
-    // const t_sFMKFDCAN_DrvNodeCfg c_FmkCan_BspNodeCfgList_as[FMKFDCAN_NODE_CFG_NB] = 
-    // {// clockDivider_e                      ProtocolUse_e                       FrameBaudrate_e                 DataBaudrate_e                    QueueType_e                       FifoMode_e
-    //     {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_NO_BRS,          FMKFDCAN_FRAME_BAUDRATE_250K,   FMKFDCAN_FRAME_BAUDRATE_250K,    FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_1
-    //     {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_CAN2_0B,          FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_2
-    //     {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_NO_BRS,     FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_1M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_3
-    //     {FMKFDCAN_CLOCK_KERNEL_DIV1,        FMKFDCAN_PROTOCOL_FDCAN_BRS,        FMKFDCAN_FRAME_BAUDRATE_1M,     FMKFDCAN_FRAME_BAUDRATE_4M,      FMKFDCAN_HWQUEUE_TYPE_FIFO,      FMKFDCAN_FIFO_OPEMODE_BLOCKING}, // FMKFDCAN_NODE_CFG_4
-    // };
     //********************************************************************************
     //                      Public functions - Prototyupes
     //********************************************************************************
@@ -258,6 +305,8 @@
     }
 
     /* CAUTION : Automatic generated code section for FDCAN IRQN Handler : End */
+
+#endif /* !PC_SIM */
 
 #endif // FMKFDCAN_CONFIGPRIVATE_H_INCLUDED           
 //************************************************************************************

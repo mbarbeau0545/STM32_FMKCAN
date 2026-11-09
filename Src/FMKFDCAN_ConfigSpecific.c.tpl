@@ -446,3 +446,28 @@ static t_uint16 s_FMKFDCAN_RoundDivU32(t_uint32 f_numerator_u32, t_uint32 f_deno
 //************************************************************************************
 // End of File
 //************************************************************************************
+
+/*********************************
+ * FMKFDCAN_EnterQueueCritical_PRIVATE_
+ *********************************/
+t_uint32 FMKFDCAN_EnterQueueCritical_PRIVATE_(void)
+{
+    //---- 1- Preserve the caller's interrupt mask and serialize queue metadata ----//
+    t_uint32 key_u32 = __get_PRIMASK();
+    __disable_irq();
+    __DMB();
+
+    return key_u32;
+}
+
+/*********************************
+ * FMKFDCAN_ExitQueueCritical_PRIVATE_
+ *********************************/
+void FMKFDCAN_ExitQueueCritical_PRIVATE_(t_uint32 f_Key_u32)
+{
+    //---- 1- Publish queue changes before restoring the caller's interrupt mask ----//
+    __DMB();
+    __set_PRIMASK(f_Key_u32);
+
+    return;
+}

@@ -84,6 +84,18 @@ t_eReturnCode FMKFDCAN_ComputeBitTiming(t_uint32 f_kernelClockHz_u32,
                                         t_sFMKFDCAN_BaudrateCfg *f_baudrateCfg_ps);
 
 #endif // APPSYS_MODULE_FMKCAN_ENABLE
+/**
+ * @brief Serialize short software queue operations without accessing a peripheral.
+ * @note Preserves the interrupt mask; never hold this section while calling the HAL or a user callback.
+ * @return Previous interrupt mask, passed unchanged to FMKFDCAN_ExitQueueCritical_PRIVATE_.
+ */
+t_uint32 FMKFDCAN_EnterQueueCritical_PRIVATE_(void);
+/**
+ * @brief Restore the interrupt mask after a short software queue operation.
+ * @param[in] f_Key_u32 Previous mask returned by the matching entry call.
+ */
+void FMKFDCAN_ExitQueueCritical_PRIVATE_(t_uint32 f_Key_u32);
+
 #endif // FMKFDCAN_CONFIGSPECIFIC_H_INCLUDED
 //************************************************************************************
 // End of File
